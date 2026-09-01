@@ -1,15 +1,23 @@
 # Workbench
 
-A small, self-hosted project/task tracker: a Kanban board with quick-add,
-due dates, priority, and notes per task. No build step, no framework —
-plain HTML/CSS/JS, so it deploys straight to GitHub Pages.
+A small, self-hosted project tracker with three views:
+
+- **Board** — a Kanban board (Backlog → In progress → Review → Done) for
+  day-to-day tasks, with quick-add, due dates, priority, and notes.
+- **Projects** — set up a project and break it into a checklist of
+  sub-tasks, separate from the day-to-day board.
+- **Archive** — a log of deleted board tasks. Deleting a task never
+  destroys it outright; it lands here, restorable or removable for good.
+
+No build step, no framework — plain HTML/CSS/JS, so it deploys straight
+to GitHub Pages.
 
 ## Files
 
 ```
-index.html       Page structure (board, task panel)
+index.html       Page structure (board, projects, task panel)
 style.css        All styling / design tokens
-app.js           App logic: rendering, drag-and-drop, task editing
+app.js           App logic: rendering, drag-and-drop, task/project editing
 github-sync.js   Storage layer — localStorage today, GitHub API when connected
 data/tasks.json  Placeholder — only used once you connect GitHub sync
 ```
@@ -31,11 +39,12 @@ from this folder, then visit `http://localhost:8000`.)
 
 ## How data is stored
 
-By default, tasks are saved in the browser's `localStorage` — nothing to
-configure, but it only lives on the one device/browser you're using.
+By default, everything is saved in the browser's `localStorage` — nothing
+to configure, but it only lives on the one device/browser you're using.
+The stored shape is one object: `{ tasks, projects, trash }`.
 
-Click **Connect sync** in the sidebar to switch to storing tasks as a JSON
-file in a GitHub repo you choose, via the GitHub API. You'll need:
+Click **Connect sync** in the sidebar to switch to storing that same object
+as a JSON file in a GitHub repo you choose, via the GitHub API. You'll need:
 
 - The repo, in `owner/repo` form (can be this same repo or a private one).
 - A path for the data file (defaults to `data/tasks.json`).
@@ -56,10 +65,11 @@ the browser.
 
 ## Where to go next
 
-- **Views:** the sidebar's Backlog/Archive buttons are wired up as tabs
-  but don't filter yet — that's the next natural feature to add.
 - **Multi-user:** once you want others using it, swap the GitHub-token
   approach for a proper backend (Supabase/Firebase) with real auth.
-- **Recurring tasks, tags, subtasks:** the task object in `app.js` is a
-  plain object (`title`, `notes`, `status`, `priority`, `due`) — easy to
-  extend with new fields as you need them.
+- **Linking projects and board tasks:** right now Projects and the Board
+  are independent; a natural next step is letting a project's sub-task
+  get promoted to a full board task, or tagging board tasks with a project.
+- **Recurring tasks, tags, due dates on sub-tasks:** the task object in
+  `app.js` is a plain object (`title`, `notes`, `status`, `priority`,
+  `due`) — easy to extend with new fields as you need them.

@@ -22,7 +22,7 @@
 
     <nav class="rail__nav">
       <button class="rail__link is-active" data-view="board">Board</button>
-      <button class="rail__link" data-view="backlog">Backlog</button>
+      <button class="rail__link" data-view="projects">Projects</button>
       <button class="rail__link" data-view="archive">Archive</button>
     </nav>
 
@@ -89,6 +89,15 @@
           <option value="low">Low</option>
           <option value="normal" selected>Normal</option>
           <option value="high">High</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panel__row panel__fields">
+      <label class="panel__field panel__field--wide">
+        <span>Project</span>
+        <select id="panelProject">
+          <option value="">No project</option>
         </select>
       </label>
     </div>

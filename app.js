@@ -1,9 +1,16 @@
 /* ================================================================
    Workbench — core app logic
-   Data model: array of task objects, persisted via the `store`
-   object defined in github-sync.js (localStorage today, swappable
-   for the GitHub API later without touching this file).
+   Data model, persisted as one object via the `store` object in
+   github-sync.js (localStorage today, swappable for the GitHub API
+   later without touching this file):
+
+     {
+       tasks:    [ ...board task objects... ],
+       projects: [ { id, name, createdAt, subtasks: [ {id, title, done} ] } ],
+       trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
+     }
 ================================================================= */
+
 const COLUMNS = [
   { id: "backlog", label: "Backlog" },
   { id: "in-progress", label: "In progress" },
@@ -12,14 +19,21 @@ const COLUMNS = [
 ];
 
 let tasks = [];
+let projects = [];
+let trash = [];
+
 let activeTaskId = null;
-let currentView = "board"; // "board" | "backlog" | "archive"
+let activeProjectId = null; // set while viewing a single project's sub-tasks
+let currentView = "board"; // "board" | "projects" | "archive"
 
 /* ---------------------------------------------------------------
    Bootstrapping
 ---------------------------------------------------------------- */
 async function init() {
-  tasks = await store.load();
+  const state = await store.load();
+  tasks = state.tasks;
+  projects = state.projects;
+  trash = state.trash;
   render();
   wireGlobalEvents();
   updateSyncIndicator();
@@ -29,12 +43,16 @@ function uid() {
   return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function persist() {
-  store.save(tasks);
+  store.save({ tasks, projects, trash });
 }
 
 /* ---------------------------------------------------------------
-   Rendering
+   Rendering — top-level dispatch
 ---------------------------------------------------------------- */
 function render() {
   const board = document.getElementById("board");
@@ -42,22 +60,10 @@ function render() {
 
   if (currentView === "board") {
     renderBoardView(board);
-  } else if (currentView === "backlog") {
-    renderListView(board, {
-      status: "backlog",
-      emptyText: "Nothing in the backlog. Add a task above to get started.",
-      rowActions: (task) => [
-        { label: "Start", onClick: () => setStatus(task.id, "in-progress") },
-      ],
-    });
+  } else if (currentView === "projects") {
+    renderProjectsView(board);
   } else if (currentView === "archive") {
-    renderListView(board, {
-      status: "done",
-      emptyText: "No completed tasks yet — finished work will show up here.",
-      rowActions: (task) => [
-        { label: "Restore", onClick: () => setStatus(task.id, "backlog") },
-      ],
-    });
+    renderArchiveView(board);
   }
 
   updateQuickAddVisibility();
@@ -65,14 +71,17 @@ function render() {
     `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
 }
 
-function setStatus(id, status) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-  task.status = status;
-  persist();
-  render();
+function updateQuickAddVisibility() {
+  const form = document.getElementById("quickAddForm");
+  // The top quick-add always creates a board task in the backlog, which
+  // isn't relevant on the Projects tab (sub-tasks are added per-project)
+  // or the Archive tab (a fresh task wouldn't show up there anyway).
+  form.style.display = currentView === "board" ? "" : "none";
 }
 
+/* ---------------------------------------------------------------
+   Board view (Kanban)
+---------------------------------------------------------------- */
 function renderBoardView(board) {
   board.innerHTML = "";
 
@@ -101,72 +110,6 @@ function renderBoardView(board) {
 
   const addBtn = board.querySelector('[data-add="backlog"]');
   if (addBtn) addBtn.addEventListener("click", () => quickAdd(""));
-}
-
-/* List view — used by the Backlog and Archive tabs. Shows tasks matching
-   a single status as a simple vertical list rather than a board. */
-function renderListView(board, { status, emptyText, rowActions }) {
-  board.innerHTML = "";
-
-  const listTasks = tasks
-    .filter((t) => t.status === status)
-    .sort((a, b) => (b.order ?? 0) - (a.order ?? 0));
-
-  const wrap = document.createElement("div");
-  wrap.className = "tasklist";
-
-  if (listTasks.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "tasklist__empty";
-    empty.textContent = emptyText;
-    wrap.appendChild(empty);
-  } else {
-    listTasks.forEach((task) => wrap.appendChild(renderListRow(task, rowActions(task))));
-  }
-
-  board.appendChild(wrap);
-}
-
-function renderListRow(task, actions) {
-  const row = document.createElement("div");
-  row.className = "listrow";
-  row.dataset.status = task.status;
-
-  const overdue = task.due && task.due < todayISO() && task.status !== "done";
-
-  row.innerHTML = `
-    <div class="listrow__main">
-      <span class="listrow__title"></span>
-      <span class="listrow__meta">
-        ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
-        ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
-      </span>
-    </div>
-    <div class="listrow__actions"></div>
-  `;
-  row.querySelector(".listrow__title").textContent = task.title;
-
-  const actionsEl = row.querySelector(".listrow__actions");
-  actions.forEach(({ label, onClick }) => {
-    const btn = document.createElement("button");
-    btn.className = "listrow__action";
-    btn.textContent = label;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    actionsEl.appendChild(btn);
-  });
-
-  row.addEventListener("click", () => openPanel(task.id));
-  return row;
-}
-
-function updateQuickAddVisibility() {
-  const form = document.getElementById("quickAddForm");
-  // Adding a new task always puts it in the backlog, so hide quick-add
-  // on the Archive tab where a fresh task wouldn't show up anyway.
-  form.style.display = currentView === "archive" ? "none" : "";
 }
 
 function nextStatusOf(status) {
@@ -225,19 +168,25 @@ function renderCard(task) {
   return card;
 }
 
-function deleteTask(id) {
-  tasks = tasks.filter((t) => t.id !== id);
+function setStatus(id, status) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.status = status;
   persist();
   render();
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+/* Deleting a board task moves it to the trash log (shown on the Archive
+   tab) rather than destroying it outright, so it can be restored. */
+function deleteTask(id) {
+  const idx = tasks.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  const [task] = tasks.splice(idx, 1);
+  trash.unshift({ ...task, deletedAt: todayISO(), prevStatus: task.status });
+  persist();
+  render();
 }
 
-/* ---------------------------------------------------------------
-   Drag and drop between columns
----------------------------------------------------------------- */
 function wireColumnDrop(body) {
   body.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -257,7 +206,264 @@ function wireColumnDrop(body) {
 }
 
 /* ---------------------------------------------------------------
-   Quick add
+   Projects view — a project list, or one project's sub-tasks
+---------------------------------------------------------------- */
+function renderProjectsView(board) {
+  board.innerHTML = "";
+  const project = projects.find((p) => p.id === activeProjectId);
+
+  if (project) {
+    board.appendChild(renderProjectDetail(project));
+  } else {
+    activeProjectId = null;
+    board.appendChild(renderProjectsList());
+  }
+}
+
+function renderProjectsList() {
+  const wrap = document.createElement("div");
+  wrap.className = "tasklist";
+
+  const addForm = document.createElement("form");
+  addForm.className = "inlineadd";
+  addForm.innerHTML = `
+    <input class="inlineadd__input" type="text" placeholder="New project name…" autocomplete="off" />
+    <button class="inlineadd__btn" type="submit">Add project</button>
+  `;
+  addForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = addForm.querySelector(".inlineadd__input");
+    const name = input.value.trim();
+    if (!name) return;
+    createProject(name);
+  });
+  wrap.appendChild(addForm);
+
+  if (projects.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "No projects yet. Add one above to start breaking it into sub-tasks.";
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  projects
+    .slice()
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    .forEach((project) => wrap.appendChild(renderProjectCard(project)));
+
+  return wrap;
+}
+
+function renderProjectCard(project) {
+  const done = project.subtasks.filter((s) => s.done).length;
+  const total = project.subtasks.length;
+
+  const row = document.createElement("div");
+  row.className = "listrow";
+  row.innerHTML = `
+    <div class="listrow__main">
+      <span class="listrow__title"></span>
+      <span class="listrow__meta">${total ? `${done}/${total} done` : "No sub-tasks yet"}</span>
+    </div>
+    <div class="listrow__actions">
+      <button class="listrow__action" data-action="open">Open</button>
+      <button class="listrow__action listrow__action--danger" data-action="delete">Delete</button>
+    </div>
+  `;
+  row.querySelector(".listrow__title").textContent = project.name;
+
+  row.querySelector('[data-action="open"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    openProject(project.id);
+  });
+  row.querySelector('[data-action="delete"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteProject(project.id);
+  });
+  row.addEventListener("click", () => openProject(project.id));
+
+  return row;
+}
+
+function renderProjectDetail(project) {
+  const wrap = document.createElement("div");
+  wrap.className = "tasklist";
+
+  const header = document.createElement("div");
+  header.className = "projecthead";
+  header.innerHTML = `
+    <button class="projecthead__back" type="button">← Projects</button>
+    <span class="projecthead__title"></span>
+    <button class="projecthead__delete" type="button">Delete project</button>
+  `;
+  header.querySelector(".projecthead__title").textContent = project.name;
+  header.querySelector(".projecthead__back").addEventListener("click", closeProjectDetail);
+  header.querySelector(".projecthead__delete").addEventListener("click", () => deleteProject(project.id));
+  wrap.appendChild(header);
+
+  const addForm = document.createElement("form");
+  addForm.className = "inlineadd";
+  addForm.innerHTML = `
+    <input class="inlineadd__input" type="text" placeholder="Add a sub-task…" autocomplete="off" />
+    <button class="inlineadd__btn" type="submit">Add</button>
+  `;
+  addForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = addForm.querySelector(".inlineadd__input");
+    const title = input.value.trim();
+    if (!title) return;
+    addSubtask(project.id, title);
+  });
+  wrap.appendChild(addForm);
+
+  if (project.subtasks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "No sub-tasks yet. Add the first one above.";
+    wrap.appendChild(empty);
+  } else {
+    project.subtasks.forEach((sub) => wrap.appendChild(renderSubtaskRow(project.id, sub)));
+  }
+
+  return wrap;
+}
+
+function renderSubtaskRow(projectId, sub) {
+  const row = document.createElement("div");
+  row.className = "subtaskrow";
+  row.innerHTML = `
+    <label class="subtaskrow__main">
+      <input type="checkbox" ${sub.done ? "checked" : ""} />
+      <span class="subtaskrow__title"></span>
+    </label>
+    <button class="listrow__action listrow__action--danger" type="button">Delete</button>
+  `;
+  row.querySelector(".subtaskrow__title").textContent = sub.title;
+  if (sub.done) row.classList.add("is-done");
+
+  row.querySelector('input[type="checkbox"]').addEventListener("change", () => {
+    toggleSubtask(projectId, sub.id);
+  });
+  row.querySelector(".listrow__action--danger").addEventListener("click", () => {
+    deleteSubtask(projectId, sub.id);
+  });
+
+  return row;
+}
+
+function createProject(name) {
+  projects.push({ id: uid(), name, createdAt: todayISO(), subtasks: [] });
+  persist();
+  render();
+}
+
+function openProject(id) {
+  activeProjectId = id;
+  render();
+}
+
+function closeProjectDetail() {
+  activeProjectId = null;
+  render();
+}
+
+function deleteProject(id) {
+  if (!confirm("Delete this project and all its sub-tasks? This can't be undone.")) return;
+  projects = projects.filter((p) => p.id !== id);
+  if (activeProjectId === id) activeProjectId = null;
+  persist();
+  render();
+}
+
+function addSubtask(projectId, title) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  project.subtasks.push({ id: uid(), title, done: false, createdAt: todayISO() });
+  persist();
+  render();
+}
+
+function toggleSubtask(projectId, subtaskId) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  const sub = project.subtasks.find((s) => s.id === subtaskId);
+  if (!sub) return;
+  sub.done = !sub.done;
+  persist();
+  render();
+}
+
+function deleteSubtask(projectId, subtaskId) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  project.subtasks = project.subtasks.filter((s) => s.id !== subtaskId);
+  persist();
+  render();
+}
+
+/* ---------------------------------------------------------------
+   Archive view — a log of deleted tasks, restorable or permanent
+---------------------------------------------------------------- */
+function renderArchiveView(board) {
+  board.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "tasklist";
+
+  if (trash.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "Nothing deleted yet — tasks you delete will show up here so you can restore them.";
+    wrap.appendChild(empty);
+  } else {
+    trash.forEach((entry) => wrap.appendChild(renderTrashRow(entry)));
+  }
+
+  board.appendChild(wrap);
+}
+
+function renderTrashRow(entry) {
+  const row = document.createElement("div");
+  row.className = "listrow";
+  row.innerHTML = `
+    <div class="listrow__main">
+      <span class="listrow__title"></span>
+      <span class="listrow__meta">Deleted ${entry.deletedAt}</span>
+    </div>
+    <div class="listrow__actions">
+      <button class="listrow__action" data-action="restore">Restore</button>
+      <button class="listrow__action listrow__action--danger" data-action="purge">Delete forever</button>
+    </div>
+  `;
+  row.querySelector(".listrow__title").textContent = entry.title;
+
+  row.querySelector('[data-action="restore"]').addEventListener("click", () => restoreFromTrash(entry.id));
+  row.querySelector('[data-action="purge"]').addEventListener("click", () => purgeFromTrash(entry.id));
+
+  return row;
+}
+
+function restoreFromTrash(id) {
+  const idx = trash.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  const [entry] = trash.splice(idx, 1);
+  const { deletedAt, prevStatus, ...task } = entry;
+  task.status = prevStatus || "backlog";
+  tasks.push(task);
+  persist();
+  render();
+}
+
+function purgeFromTrash(id) {
+  if (!confirm("Permanently delete this task? This can't be undone.")) return;
+  trash = trash.filter((t) => t.id !== id);
+  persist();
+  render();
+}
+
+/* ---------------------------------------------------------------
+   Quick add (board tasks only)
 ---------------------------------------------------------------- */
 function quickAdd(prefill) {
   const input = document.getElementById("quickAddInput");
@@ -313,6 +519,7 @@ function wireGlobalEvents() {
       document.querySelectorAll(".rail__link").forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       currentView = btn.dataset.view;
+      activeProjectId = null; // always land on the project list, not a stale detail view
       closePanel();
       render();
     });
@@ -320,7 +527,7 @@ function wireGlobalEvents() {
 }
 
 /* ---------------------------------------------------------------
-   Task detail panel
+   Task detail panel (board tasks only)
 ---------------------------------------------------------------- */
 function openPanel(id) {
   const task = tasks.find((t) => t.id === id);

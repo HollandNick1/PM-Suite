@@ -412,6 +412,125 @@ button, input, select, textarea {
   color: var(--accent);
 }
 
+.listrow__action--danger:hover {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* ---------------------------------------------
+   Inline add form (used on the Projects tab, both
+   for "new project" and "add sub-task")
+--------------------------------------------- */
+.inlineadd {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.inlineadd__input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 13.5px;
+  background: var(--panel);
+}
+
+.inlineadd__btn {
+  background: var(--accent);
+  color: var(--panel);
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.inlineadd__btn:hover {
+  opacity: 0.9;
+}
+
+/* Project detail header */
+.projecthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.projecthead__back {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.projecthead__back:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.projecthead__title {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.projecthead__delete {
+  background: none;
+  border: none;
+  color: var(--warn);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* Sub-task rows */
+.subtaskrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+
+.subtaskrow__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.subtaskrow__main input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.subtaskrow__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtaskrow.is-done .subtaskrow__title {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
 /* ---------------------------------------------
    Task detail panel
 --------------------------------------------- */

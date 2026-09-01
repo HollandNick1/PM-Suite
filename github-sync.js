@@ -29,27 +29,27 @@ const store = {
   async load() {
     const config = getConfig();
     if (!config) {
-      return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
+      return normalizeState(JSON.parse(localStorage.getItem(LOCAL_KEY) || "null"));
     }
     try {
-      const { tasks } = await githubGetFile(config);
-      return tasks;
+      const { data } = await githubGetFile(config);
+      return normalizeState(data);
     } catch (err) {
       console.error("GitHub sync load failed, falling back to local copy:", err);
       alert("Couldn't reach GitHub — showing your last locally saved copy instead.");
-      return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
+      return normalizeState(JSON.parse(localStorage.getItem(LOCAL_KEY) || "null"));
     }
   },
 
-  async save(tasks) {
+  async save(state) {
     // Always keep a local copy too, so a dropped connection never loses data.
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(tasks));
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
 
     const config = getConfig();
     if (!config) return;
 
     try {
-      await githubPutFile(config, tasks);
+      await githubPutFile(config, state);
     } catch (err) {
       console.error("GitHub sync save failed:", err);
       alert("Saved locally, but couldn't sync to GitHub. Check your token/repo settings.");
@@ -95,6 +95,19 @@ const store = {
   },
 };
 
+// Accepts the old format (a bare array of tasks) or the current format
+// ({ tasks, projects, trash }) and always returns the current shape, so
+// nobody's existing saved data gets dropped when this schema changed.
+function normalizeState(raw) {
+  if (!raw) return { tasks: [], projects: [], trash: [] };
+  if (Array.isArray(raw)) return { tasks: raw, projects: [], trash: [] };
+  return {
+    tasks: raw.tasks || [],
+    projects: raw.projects || [],
+    trash: raw.trash || [],
+  };
+}
+
 function getConfig() {
   const raw = localStorage.getItem(CONFIG_KEY);
   return raw ? JSON.parse(raw) : null;
@@ -114,17 +127,17 @@ async function githubGetFile(config) {
   });
 
   if (res.status === 404) {
-    // File doesn't exist yet — treat as an empty task list.
-    return { tasks: [], sha: null };
+    // File doesn't exist yet — treat as empty state.
+    return { data: null, sha: null };
   }
   if (!res.ok) throw new Error(`GitHub GET failed: ${res.status}`);
 
-  const data = await res.json();
-  const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
-  return { tasks: JSON.parse(decoded || "[]"), sha: data.sha };
+  const json = await res.json();
+  const decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ""))));
+  return { data: JSON.parse(decoded || "null"), sha: json.sha };
 }
 
-async function githubPutFile(config, tasks) {
+async function githubPutFile(config, state) {
   const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${config.path}`;
 
   // Need the current sha to update an existing file; skip if it's a new file.
@@ -136,7 +149,7 @@ async function githubPutFile(config, tasks) {
     /* first save — no sha yet */
   }
 
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(tasks, null, 2))));
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(state, null, 2))));
 
   const body = {
     message: `Update tasks — ${new Date().toISOString()}`,
