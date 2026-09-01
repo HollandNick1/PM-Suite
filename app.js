@@ -193,7 +193,11 @@ function renderCard(task) {
       ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
     </div>
     <div class="card__footer">
-      ${next ? `<button class="card__advance" type="button">Move to ${next.label} →</button>` : ""}
+      ${
+        next
+          ? `<button class="card__advance" type="button">Move to ${next.label} →</button>`
+          : `<button class="card__delete" type="button">Delete</button>`
+      }
     </div>
   `;
   card.querySelector(".card__title").textContent = task.title;
@@ -211,7 +215,21 @@ function renderCard(task) {
     });
   }
 
+  const deleteBtn = card.querySelector(".card__delete");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTask(task.id);
+    });
+  }
+
   return card;
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter((t) => t.id !== id);
+  persist();
+  render();
 }
 
 function todayISO() {
@@ -275,10 +293,8 @@ function wireGlobalEvents() {
   });
 
   document.getElementById("panelDelete").addEventListener("click", () => {
-    tasks = tasks.filter((t) => t.id !== activeTaskId);
-    persist();
+    deleteTask(activeTaskId);
     closePanel();
-    render();
   });
 
   ["panelTitle", "panelNotes", "panelStatus", "panelDue", "panelPriority"].forEach((id) => {
