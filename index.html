@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Workbench — Project Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Left rail -->
+  <aside class="rail">
+    <div class="rail__brand">
+      <span class="rail__mark">◆</span>
+      <span class="rail__name">Workbench</span>
+    </div>
+
+    <nav class="rail__nav">
+      <button class="rail__link is-active" data-view="board">Board</button>
+      <button class="rail__link" data-view="backlog">Backlog</button>
+      <button class="rail__link" data-view="archive">Archive</button>
+    </nav>
+
+    <div class="rail__sync">
+      <span class="rail__sync-dot" id="syncDot"></span>
+      <span class="rail__sync-label" id="syncLabel">Saved on this device</span>
+      <button class="rail__sync-btn" id="syncBtn" title="Connect GitHub sync">Connect sync</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <form class="quickadd" id="quickAddForm">
+        <input
+          class="quickadd__input"
+          id="quickAddInput"
+          type="text"
+          placeholder="Add a task and press Enter…"
+          autocomplete="off"
+        />
+      </form>
+      <div class="topbar__meta">
+        <span id="taskCount">0 tasks</span>
+      </div>
+    </header>
+
+    <section class="board" id="board">
+      <!-- columns injected by app.js -->
+    </section>
+  </main>
+
+</div>
+
+<!-- Task detail / edit panel -->
+<div class="panel-backdrop" id="panelBackdrop">
+  <div class="panel" id="taskPanel">
+    <div class="panel__row">
+      <input class="panel__title" id="panelTitle" type="text" placeholder="Task title" />
+      <button class="panel__close" id="panelClose">Close</button>
+    </div>
+
+    <textarea class="panel__notes" id="panelNotes" placeholder="Notes…"></textarea>
+
+    <div class="panel__row panel__fields">
+      <label class="panel__field">
+        <span>Status</span>
+        <select id="panelStatus">
+          <option value="backlog">Backlog</option>
+          <option value="in-progress">In progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+        </select>
+      </label>
+
+      <label class="panel__field">
+        <span>Due date</span>
+        <input type="date" id="panelDue" />
+      </label>
+
+      <label class="panel__field">
+        <span>Priority</span>
+        <select id="panelPriority">
+          <option value="low">Low</option>
+          <option value="normal" selected>Normal</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panel__row panel__footer">
+      <span class="panel__meta" id="panelMeta"></span>
+      <button class="panel__delete" id="panelDelete">Delete task</button>
+    </div>
+  </div>
+</div>
+
+<script src="github-sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
