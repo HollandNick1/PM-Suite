@@ -276,6 +276,13 @@ button, input, select, textarea {
 
 .card__priority-high { color: var(--priority-high); }
 
+.card__project {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
 .card__footer {
   margin-top: 8px;
 }

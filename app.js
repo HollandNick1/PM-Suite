@@ -5,10 +5,16 @@
    later without touching this file):
 
      {
-       tasks:    [ ...board task objects... ],
+       tasks:    [ ...board task objects, each with an optional projectId... ],
        projects: [ { id, name, createdAt, subtasks: [ {id, title, done} ] } ],
        trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
      }
+
+   Projects and the board are linked two ways:
+   - Adding a project sub-task also creates a matching backlog card on the
+     board (task.projectId points back at the project).
+   - Every board task can be assigned to a project via the Project dropdown
+     in its detail panel, independent of how it was created.
 ================================================================= */
 
 const COLUMNS = [
@@ -127,10 +133,12 @@ function renderCard(task) {
 
   const overdue = task.due && task.due < todayISO() && task.status !== "done";
   const next = nextStatusOf(task.status);
+  const project = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
 
   card.innerHTML = `
     <div class="card__title"></div>
     <div class="card__meta">
+      ${project ? `<span class="card__project"></span>` : ""}
       ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
       ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
     </div>
@@ -143,6 +151,7 @@ function renderCard(task) {
     </div>
   `;
   card.querySelector(".card__title").textContent = task.title;
+  if (project) card.querySelector(".card__project").textContent = project.name;
 
   card.addEventListener("click", () => openPanel(task.id));
   card.addEventListener("dragstart", (e) => {
@@ -370,6 +379,11 @@ function closeProjectDetail() {
 
 function deleteProject(id) {
   if (!confirm("Delete this project and all its sub-tasks? This can't be undone.")) return;
+  // Board cards created from this project's sub-tasks stay on the board;
+  // they just lose the project tag rather than disappearing.
+  tasks.forEach((t) => {
+    if (t.projectId === id) t.projectId = "";
+  });
   projects = projects.filter((p) => p.id !== id);
   if (activeProjectId === id) activeProjectId = null;
   persist();
@@ -380,6 +394,19 @@ function addSubtask(projectId, title) {
   const project = projects.find((p) => p.id === projectId);
   if (!project) return;
   project.subtasks.push({ id: uid(), title, done: false, createdAt: todayISO() });
+  // A project sub-task is also real work, so it gets a matching card on
+  // the board (starting in Backlog) tagged back to this project.
+  tasks.push({
+    id: uid(),
+    title,
+    notes: "",
+    status: "backlog",
+    priority: "normal",
+    due: "",
+    order: Date.now(),
+    created: todayISO(),
+    projectId,
+  });
   persist();
   render();
 }
@@ -486,6 +513,7 @@ function wireGlobalEvents() {
       due: "",
       order: Date.now(),
       created: todayISO(),
+      projectId: "",
     });
     input.value = "";
     persist();
@@ -502,7 +530,7 @@ function wireGlobalEvents() {
     closePanel();
   });
 
-  ["panelTitle", "panelNotes", "panelStatus", "panelDue", "panelPriority"].forEach((id) => {
+  ["panelTitle", "panelNotes", "panelStatus", "panelDue", "panelPriority", "panelProject"].forEach((id) => {
     document.getElementById(id).addEventListener("input", saveActiveTaskFromPanel);
     document.getElementById(id).addEventListener("change", saveActiveTaskFromPanel);
   });
@@ -529,6 +557,21 @@ function wireGlobalEvents() {
 /* ---------------------------------------------------------------
    Task detail panel (board tasks only)
 ---------------------------------------------------------------- */
+function populateProjectSelect(selectedId) {
+  const select = document.getElementById("panelProject");
+  select.innerHTML = '<option value="">No project</option>';
+  projects
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.id;
+      option.textContent = project.name;
+      select.appendChild(option);
+    });
+  select.value = selectedId || "";
+}
+
 function openPanel(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
@@ -539,6 +582,7 @@ function openPanel(id) {
   document.getElementById("panelStatus").value = task.status;
   document.getElementById("panelDue").value = task.due || "";
   document.getElementById("panelPriority").value = task.priority || "normal";
+  populateProjectSelect(task.projectId);
   document.getElementById("panelMeta").textContent = `Created ${task.created} · ${task.id}`;
 
   document.getElementById("panelBackdrop").classList.add("is-open");
@@ -557,6 +601,7 @@ function saveActiveTaskFromPanel() {
   task.status = document.getElementById("panelStatus").value;
   task.due = document.getElementById("panelDue").value;
   task.priority = document.getElementById("panelPriority").value;
+  task.projectId = document.getElementById("panelProject").value;
   persist();
   render();
 }
