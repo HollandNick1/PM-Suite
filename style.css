@@ -387,6 +387,140 @@ button, input, select, textarea {
   max-width: 640px;
 }
 
+.timelinefilter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.timelinefilter__clear {
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.timelinefilter__clear:hover {
+  background: var(--panel);
+}
+
+/* ---------------------------------------------
+   Calendar view (Board tab)
+--------------------------------------------- */
+.board.is-calendar {
+  display: block;
+}
+
+.calendar {
+  max-width: 760px;
+}
+
+.calendar__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.calendar__title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  min-width: 180px;
+  text-align: center;
+}
+
+.calendar__nav {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.calendar__nav:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar__weekday {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.calendar__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  aspect-ratio: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.calendar__cell.is-empty {
+  background: none;
+  border: none;
+  cursor: default;
+}
+
+.calendar__cell:hover:not(.is-empty) {
+  border-color: var(--accent);
+}
+
+.calendar__cell.is-today {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.calendar__cell.has-tasks {
+  background: var(--accent-soft);
+}
+
+.calendar__day {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.calendar__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 0 6px;
+  min-width: 16px;
+  text-align: center;
+}
+
 .tasklist {
   display: flex;
   flex-direction: column;

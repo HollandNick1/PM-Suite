@@ -32,7 +32,13 @@ let trash = [];
 let activeTaskId = null;
 let activeProjectId = null; // set while viewing a single project's sub-tasks
 let currentView = "board"; // "board" | "projects" | "archive"
-let boardMode = "kanban"; // "kanban" | "timeline" — only meaningful on the Board tab
+let boardMode = "kanban"; // "kanban" | "timeline" | "calendar" — only meaningful on the Board tab
+let timelineFilterDate = null; // set by clicking a Calendar day; narrows Timeline to that date
+let calendarCursor = monthOf(new Date());
+
+function monthOf(date) {
+  return { year: date.getFullYear(), month: date.getMonth() };
+}
 
 /* ---------------------------------------------------------------
    Bootstrapping
@@ -73,11 +79,15 @@ function persist() {
 function render() {
   const board = document.getElementById("board");
   const isTimeline = currentView === "board" && boardMode === "timeline";
+  const isCalendar = currentView === "board" && boardMode === "calendar";
   board.classList.toggle("is-list", currentView !== "board" || isTimeline);
+  board.classList.toggle("is-calendar", isCalendar);
 
   if (currentView === "board") {
     if (isTimeline) {
       renderTimelineView(board);
+    } else if (isCalendar) {
+      renderCalendarView(board);
     } else {
       renderBoardView(board);
     }
@@ -144,15 +154,33 @@ function renderTimelineView(board) {
   const wrap = document.createElement("div");
   wrap.className = "tasklist";
 
-  if (tasks.length === 0) {
+  if (timelineFilterDate) {
+    const banner = document.createElement("div");
+    banner.className = "timelinefilter";
+    banner.innerHTML = `
+      <span>Showing tasks due <strong>${timelineFilterDate}</strong></span>
+      <button class="timelinefilter__clear" type="button">Show all</button>
+    `;
+    banner.querySelector(".timelinefilter__clear").addEventListener("click", () => {
+      timelineFilterDate = null;
+      render();
+    });
+    wrap.appendChild(banner);
+  }
+
+  const visible = timelineFilterDate ? tasks.filter((t) => t.due === timelineFilterDate) : tasks;
+
+  if (visible.length === 0) {
     const empty = document.createElement("p");
     empty.className = "tasklist__empty";
-    empty.textContent = "No tasks yet. Add one above to see it on the timeline.";
+    empty.textContent = timelineFilterDate
+      ? "No tasks due this day."
+      : "No tasks yet. Add one above to see it on the timeline.";
     wrap.appendChild(empty);
   } else {
     // Undated tasks (only possible for ones created before due dates were
     // required) sort to the end rather than the front.
-    tasks
+    visible
       .slice()
       .sort((a, b) => (a.due || "9999-99-99").localeCompare(b.due || "9999-99-99"))
       .forEach((task) => wrap.appendChild(renderTimelineRow(task)));
@@ -192,6 +220,103 @@ function renderTimelineRow(task) {
   row.addEventListener("click", () => openPanel(task.id));
 
   return row;
+}
+
+/* ---------------------------------------------------------------
+   Calendar view — a month grid with a due-task count per day;
+   clicking a day drops into Timeline filtered to that date
+---------------------------------------------------------------- */
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function renderCalendarView(board) {
+  board.innerHTML = "";
+
+  const { year, month } = calendarCursor;
+  const firstOfMonth = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = todayISO();
+
+  const dueCounts = {};
+  tasks.forEach((t) => {
+    if (t.due) dueCounts[t.due] = (dueCounts[t.due] || 0) + 1;
+  });
+
+  const wrap = document.createElement("div");
+  wrap.className = "calendar";
+
+  const head = document.createElement("div");
+  head.className = "calendar__head";
+  head.innerHTML = `
+    <button class="calendar__nav" type="button" data-nav="-1">‹</button>
+    <span class="calendar__title">${firstOfMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
+    <button class="calendar__nav" type="button" data-nav="1">›</button>
+  `;
+  head.querySelector('[data-nav="-1"]').addEventListener("click", () => shiftCalendarMonth(-1));
+  head.querySelector('[data-nav="1"]').addEventListener("click", () => shiftCalendarMonth(1));
+  wrap.appendChild(head);
+
+  const grid = document.createElement("div");
+  grid.className = "calendar__grid";
+
+  WEEKDAY_LABELS.forEach((label) => {
+    const cell = document.createElement("div");
+    cell.className = "calendar__weekday";
+    cell.textContent = label;
+    grid.appendChild(cell);
+  });
+
+  for (let i = 0; i < firstOfMonth.getDay(); i++) {
+    const filler = document.createElement("div");
+    filler.className = "calendar__cell is-empty";
+    grid.appendChild(filler);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const count = dueCounts[dateStr] || 0;
+
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar__cell";
+    if (dateStr === todayStr) cell.classList.add("is-today");
+    if (count > 0) cell.classList.add("has-tasks");
+    cell.innerHTML = `
+      <span class="calendar__day">${day}</span>
+      ${count > 0 ? `<span class="calendar__count">${count}</span>` : ""}
+    `;
+    cell.addEventListener("click", () => openDayInTimeline(dateStr));
+    grid.appendChild(cell);
+  }
+
+  wrap.appendChild(grid);
+  board.appendChild(wrap);
+}
+
+function shiftCalendarMonth(delta) {
+  let { year, month } = calendarCursor;
+  month += delta;
+  if (month < 0) {
+    month = 11;
+    year -= 1;
+  } else if (month > 11) {
+    month = 0;
+    year += 1;
+  }
+  calendarCursor = { year, month };
+  render();
+}
+
+function openDayInTimeline(dateStr) {
+  timelineFilterDate = dateStr;
+  switchBoardMode("timeline");
+}
+
+function switchBoardMode(mode) {
+  boardMode = mode;
+  document.querySelectorAll(".viewswitch__btn").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.mode === mode);
+  });
+  render();
 }
 
 function nextStatusOf(status) {
@@ -643,10 +768,10 @@ function wireGlobalEvents() {
 
   document.querySelectorAll(".viewswitch__btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".viewswitch__btn").forEach((b) => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      boardMode = btn.dataset.mode;
-      render();
+      // A manual switch to Timeline should show everything — the date
+      // filter only makes sense as a result of clicking a Calendar day.
+      if (btn.dataset.mode === "timeline") timelineFilterDate = null;
+      switchBoardMode(btn.dataset.mode);
     });
   });
 }
