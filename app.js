@@ -23,6 +23,7 @@ const COLUMNS = [
   { id: "review", label: "Review" },
   { id: "done", label: "Done" },
 ];
+const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.id, c.label]));
 
 let tasks = [];
 let projects = [];
@@ -31,6 +32,7 @@ let trash = [];
 let activeTaskId = null;
 let activeProjectId = null; // set while viewing a single project's sub-tasks
 let currentView = "board"; // "board" | "projects" | "archive"
+let boardMode = "kanban"; // "kanban" | "timeline" — only meaningful on the Board tab
 
 /* ---------------------------------------------------------------
    Bootstrapping
@@ -53,6 +55,14 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// New tasks default to a due date a week out, since the Timeline view
+// orders everything by due date and an undated task has nowhere to sit.
+function defaultDueDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return d.toISOString().slice(0, 10);
+}
+
 function persist() {
   store.save({ tasks, projects, trash });
 }
@@ -62,10 +72,15 @@ function persist() {
 ---------------------------------------------------------------- */
 function render() {
   const board = document.getElementById("board");
-  board.classList.toggle("is-list", currentView !== "board");
+  const isTimeline = currentView === "board" && boardMode === "timeline";
+  board.classList.toggle("is-list", currentView !== "board" || isTimeline);
 
   if (currentView === "board") {
-    renderBoardView(board);
+    if (isTimeline) {
+      renderTimelineView(board);
+    } else {
+      renderBoardView(board);
+    }
   } else if (currentView === "projects") {
     renderProjectsView(board);
   } else if (currentView === "archive") {
@@ -79,10 +94,12 @@ function render() {
 
 function updateQuickAddVisibility() {
   const form = document.getElementById("quickAddForm");
+  const viewSwitch = document.getElementById("boardViewSwitch");
   // The top quick-add always creates a board task in the backlog, which
   // isn't relevant on the Projects tab (sub-tasks are added per-project)
   // or the Archive tab (a fresh task wouldn't show up there anyway).
   form.style.display = currentView === "board" ? "" : "none";
+  viewSwitch.style.display = currentView === "board" ? "" : "none";
 }
 
 /* ---------------------------------------------------------------
@@ -116,6 +133,65 @@ function renderBoardView(board) {
 
   const addBtn = board.querySelector('[data-add="backlog"]');
   if (addBtn) addBtn.addEventListener("click", () => quickAdd(""));
+}
+
+/* ---------------------------------------------------------------
+   Timeline view — every task in one list, ordered by due date
+---------------------------------------------------------------- */
+function renderTimelineView(board) {
+  board.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "tasklist";
+
+  if (tasks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "No tasks yet. Add one above to see it on the timeline.";
+    wrap.appendChild(empty);
+  } else {
+    // Undated tasks (only possible for ones created before due dates were
+    // required) sort to the end rather than the front.
+    tasks
+      .slice()
+      .sort((a, b) => (a.due || "9999-99-99").localeCompare(b.due || "9999-99-99"))
+      .forEach((task) => wrap.appendChild(renderTimelineRow(task)));
+  }
+
+  board.appendChild(wrap);
+}
+
+function renderTimelineRow(task) {
+  const overdue = task.due && task.due < todayISO() && task.status !== "done";
+  const project = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
+
+  const row = document.createElement("div");
+  row.className = "listrow";
+  row.dataset.status = task.status;
+  row.innerHTML = `
+    <div class="listrow__main">
+      <span class="listrow__title"></span>
+      <span class="listrow__meta">
+        <span class="listrow__due ${overdue ? "is-overdue" : ""}">${task.due || "No due date"}</span>
+        <span class="subtaskrow__status">${STATUS_LABEL[task.status] || task.status}</span>
+        ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
+        ${project ? `<span class="card__project"></span>` : ""}
+      </span>
+    </div>
+    <div class="listrow__actions">
+      <button class="listrow__action listrow__action--danger" data-action="delete">Delete</button>
+    </div>
+  `;
+  row.querySelector(".listrow__title").textContent = task.title;
+  if (project) row.querySelector(".card__project").textContent = project.name;
+
+  row.querySelector('[data-action="delete"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteTask(task.id);
+  });
+  row.addEventListener("click", () => openPanel(task.id));
+
+  return row;
 }
 
 function nextStatusOf(status) {
@@ -346,8 +422,6 @@ function renderProjectDetail(project) {
   return wrap;
 }
 
-const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.id, c.label]));
-
 function renderProjectTaskRow(task) {
   const done = task.status === "done";
   const row = document.createElement("div");
@@ -434,7 +508,7 @@ function addProjectTask(projectId, title) {
     notes: "",
     status: "backlog",
     priority: "normal",
-    due: "",
+    due: defaultDueDate(),
     order: Date.now(),
     created: todayISO(),
     projectId,
@@ -524,7 +598,7 @@ function wireGlobalEvents() {
       notes: "",
       status: "backlog",
       priority: "normal",
-      due: "",
+      due: defaultDueDate(),
       order: Date.now(),
       created: todayISO(),
       projectId: "",
@@ -563,6 +637,15 @@ function wireGlobalEvents() {
       currentView = btn.dataset.view;
       activeProjectId = null; // always land on the project list, not a stale detail view
       closePanel();
+      render();
+    });
+  });
+
+  document.querySelectorAll(".viewswitch__btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".viewswitch__btn").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      boardMode = btn.dataset.mode;
       render();
     });
   });
