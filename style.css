@@ -72,13 +72,20 @@ button, input, select, textarea {
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 500;
-  margin-bottom: 32px;
   padding: 0 8px;
 }
 
 .rail__mark {
   color: var(--accent);
   font-size: 16px;
+}
+
+.rail__version {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  padding: 0 8px;
+  margin-bottom: 32px;
 }
 
 .rail__nav {
@@ -661,7 +668,7 @@ button, input, select, textarea {
     border-bottom: 1px solid var(--line);
     padding: 12px 16px;
   }
-  .rail__brand { margin-bottom: 0; }
+  .rail__version { margin-bottom: 0; }
   .rail__nav { flex-direction: row; margin-left: 16px; }
   .rail__sync { display: none; }
   .board { grid-template-columns: 1fr; }
