@@ -6,15 +6,15 @@
 
      {
        tasks:    [ ...board task objects, each with an optional projectId... ],
-       projects: [ { id, name, createdAt, subtasks: [ {id, title, done} ] } ],
+       projects: [ { id, name, createdAt } ],
        trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
      }
 
-   Projects and the board are linked two ways:
-   - Adding a project sub-task also creates a matching backlog card on the
-     board (task.projectId points back at the project).
-   - Every board task can be assigned to a project via the Project dropdown
-     in its detail panel, independent of how it was created.
+   A project doesn't keep its own task list — the Projects tab just shows
+   whichever board tasks have that project's id, sorted by creation. That
+   way there's one source of truth: a status change on the board (drag,
+   the advance button, the panel) and a done-toggle on the Projects tab
+   are the same field, so either view always reflects the other.
 ================================================================= */
 
 const COLUMNS = [
@@ -264,16 +264,23 @@ function renderProjectsList() {
   return wrap;
 }
 
+function tasksForProject(projectId) {
+  return tasks
+    .filter((t) => t.projectId === projectId)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
 function renderProjectCard(project) {
-  const done = project.subtasks.filter((s) => s.done).length;
-  const total = project.subtasks.length;
+  const projectTasks = tasksForProject(project.id);
+  const done = projectTasks.filter((t) => t.status === "done").length;
+  const total = projectTasks.length;
 
   const row = document.createElement("div");
   row.className = "listrow";
   row.innerHTML = `
     <div class="listrow__main">
       <span class="listrow__title"></span>
-      <span class="listrow__meta">${total ? `${done}/${total} done` : "No sub-tasks yet"}</span>
+      <span class="listrow__meta">${total ? `${done}/${total} done` : "No tasks yet"}</span>
     </div>
     <div class="listrow__actions">
       <button class="listrow__action" data-action="open">Open</button>
@@ -314,7 +321,7 @@ function renderProjectDetail(project) {
   const addForm = document.createElement("form");
   addForm.className = "inlineadd";
   addForm.innerHTML = `
-    <input class="inlineadd__input" type="text" placeholder="Add a sub-task…" autocomplete="off" />
+    <input class="inlineadd__input" type="text" placeholder="Add a task…" autocomplete="off" />
     <button class="inlineadd__btn" type="submit">Add</button>
   `;
   addForm.addEventListener("submit", (e) => {
@@ -322,47 +329,77 @@ function renderProjectDetail(project) {
     const input = addForm.querySelector(".inlineadd__input");
     const title = input.value.trim();
     if (!title) return;
-    addSubtask(project.id, title);
+    addProjectTask(project.id, title);
   });
   wrap.appendChild(addForm);
 
-  if (project.subtasks.length === 0) {
+  const projectTasks = tasksForProject(project.id);
+  if (projectTasks.length === 0) {
     const empty = document.createElement("p");
     empty.className = "tasklist__empty";
-    empty.textContent = "No sub-tasks yet. Add the first one above.";
+    empty.textContent = "No tasks yet. Add one above, or assign an existing board task to this project from its detail panel.";
     wrap.appendChild(empty);
   } else {
-    project.subtasks.forEach((sub) => wrap.appendChild(renderSubtaskRow(project.id, sub)));
+    projectTasks.forEach((task) => wrap.appendChild(renderProjectTaskRow(task)));
   }
 
   return wrap;
 }
 
-function renderSubtaskRow(projectId, sub) {
+const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.id, c.label]));
+
+function renderProjectTaskRow(task) {
+  const done = task.status === "done";
   const row = document.createElement("div");
   row.className = "subtaskrow";
   row.innerHTML = `
     <label class="subtaskrow__main">
-      <input type="checkbox" ${sub.done ? "checked" : ""} />
+      <input type="checkbox" ${done ? "checked" : ""} />
       <span class="subtaskrow__title"></span>
+      ${!done ? `<span class="subtaskrow__status">${STATUS_LABEL[task.status] || task.status}</span>` : ""}
     </label>
     <button class="listrow__action listrow__action--danger" type="button">Delete</button>
   `;
-  row.querySelector(".subtaskrow__title").textContent = sub.title;
-  if (sub.done) row.classList.add("is-done");
+  row.querySelector(".subtaskrow__title").textContent = task.title;
+  if (done) row.classList.add("is-done");
 
   row.querySelector('input[type="checkbox"]').addEventListener("change", () => {
-    toggleSubtask(projectId, sub.id);
+    toggleTaskDone(task.id);
   });
-  row.querySelector(".listrow__action--danger").addEventListener("click", () => {
-    deleteSubtask(projectId, sub.id);
+  row.querySelector(".listrow__action--danger").addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteTask(task.id);
+  });
+  // Clicking the checkbox fires its own "click" before "change", which would
+  // otherwise bubble up and open the panel with the pre-toggle status still
+  // showing — so the row only opens the panel for clicks outside the checkbox.
+  row.addEventListener("click", (e) => {
+    if (e.target.closest('input, button')) return;
+    openPanel(task.id);
   });
 
   return row;
 }
 
+/* Marking a project task "done" here just moves it to the Done column on
+   the board (remembering where it was, to restore on un-check) — it's the
+   same status field the board itself reads, so both views stay in sync. */
+function toggleTaskDone(id) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  if (task.status === "done") {
+    task.status = task.prevStatus || "backlog";
+    delete task.prevStatus;
+  } else {
+    task.prevStatus = task.status;
+    task.status = "done";
+  }
+  persist();
+  render();
+}
+
 function createProject(name) {
-  projects.push({ id: uid(), name, createdAt: todayISO(), subtasks: [] });
+  projects.push({ id: uid(), name, createdAt: todayISO() });
   persist();
   render();
 }
@@ -378,9 +415,7 @@ function closeProjectDetail() {
 }
 
 function deleteProject(id) {
-  if (!confirm("Delete this project and all its sub-tasks? This can't be undone.")) return;
-  // Board cards created from this project's sub-tasks stay on the board;
-  // they just lose the project tag rather than disappearing.
+  if (!confirm("Delete this project? Its tasks stay on the board, just no longer tagged to it.")) return;
   tasks.forEach((t) => {
     if (t.projectId === id) t.projectId = "";
   });
@@ -390,12 +425,9 @@ function deleteProject(id) {
   render();
 }
 
-function addSubtask(projectId, title) {
+function addProjectTask(projectId, title) {
   const project = projects.find((p) => p.id === projectId);
   if (!project) return;
-  project.subtasks.push({ id: uid(), title, done: false, createdAt: todayISO() });
-  // A project sub-task is also real work, so it gets a matching card on
-  // the board (starting in Backlog) tagged back to this project.
   tasks.push({
     id: uid(),
     title,
@@ -407,24 +439,6 @@ function addSubtask(projectId, title) {
     created: todayISO(),
     projectId,
   });
-  persist();
-  render();
-}
-
-function toggleSubtask(projectId, subtaskId) {
-  const project = projects.find((p) => p.id === projectId);
-  if (!project) return;
-  const sub = project.subtasks.find((s) => s.id === subtaskId);
-  if (!sub) return;
-  sub.done = !sub.done;
-  persist();
-  render();
-}
-
-function deleteSubtask(projectId, subtaskId) {
-  const project = projects.find((p) => p.id === projectId);
-  if (!project) return;
-  project.subtasks = project.subtasks.filter((s) => s.id !== subtaskId);
   persist();
   render();
 }

@@ -538,6 +538,16 @@ button, input, select, textarea {
   text-decoration: line-through;
 }
 
+.subtaskrow__status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
 /* ---------------------------------------------
    Task detail panel
 --------------------------------------------- */
