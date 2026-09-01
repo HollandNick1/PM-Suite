@@ -675,6 +675,63 @@ button, input, select, textarea {
   cursor: pointer;
 }
 
+/* Project detail — budget/timeline inputs and computed metrics */
+.projectfields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.projectfields__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.projectfields__field input {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.projectmetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.metric__label {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.metric__value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
 /* Sub-task rows */
 .subtaskrow {
   display: flex;

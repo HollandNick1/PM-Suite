@@ -6,7 +6,9 @@
 
      {
        tasks:    [ ...board task objects, each with an optional projectId... ],
-       projects: [ { id, name, createdAt } ],
+       projects: [ { id, name, createdAt,
+                      value, budget, actualSpend,   // free-text numbers
+                      startDate, endDate } ],        // ISO date strings
        trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
      }
 
@@ -475,13 +477,18 @@ function renderProjectCard(project) {
   const projectTasks = tasksForProject(project.id);
   const done = projectTasks.filter((t) => t.status === "done").length;
   const total = projectTasks.length;
+  const budget = num(project.budget);
+  const usedPct = budget > 0 ? Math.round((num(project.actualSpend) / budget) * 100) : null;
 
   const row = document.createElement("div");
   row.className = "listrow";
   row.innerHTML = `
     <div class="listrow__main">
       <span class="listrow__title"></span>
-      <span class="listrow__meta">${total ? `${done}/${total} done` : "No tasks yet"}</span>
+      <span class="listrow__meta">
+        <span>${total ? `${done}/${total} done` : "No tasks yet"}</span>
+        ${usedPct === null ? "" : `<span>${usedPct}% of budget</span>`}
+      </span>
     </div>
     <div class="listrow__actions">
       <button class="listrow__action" data-action="open">Open</button>
@@ -503,6 +510,110 @@ function renderProjectCard(project) {
   return row;
 }
 
+function num(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+
+function money(n) {
+  const sign = n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+const PROJECT_FIELDS = [
+  { key: "value", label: "Project value", type: "number", placeholder: "0" },
+  { key: "budget", label: "Budget", type: "number", placeholder: "0" },
+  { key: "actualSpend", label: "Actual spend", type: "number", placeholder: "0" },
+  { key: "startDate", label: "Start date", type: "date" },
+  { key: "endDate", label: "End date", type: "date" },
+];
+
+function renderProjectFields(project) {
+  const wrap = document.createElement("div");
+  wrap.className = "projectfields";
+  wrap.innerHTML = PROJECT_FIELDS.map(
+    (f) => `
+      <label class="projectfields__field">
+        <span>${f.label}</span>
+        <input type="${f.type}" data-field="${f.key}" placeholder="${f.placeholder || ""}" value="${project[f.key] || ""}" />
+      </label>
+    `
+  ).join("");
+
+  // "change" (not "input") so the whole detail view — including these
+  // fields — can safely re-render after each edit without stealing focus
+  // out from under the user mid-keystroke.
+  wrap.addEventListener("change", (e) => {
+    const field = e.target.dataset.field;
+    if (!field) return;
+    updateProjectField(project.id, field, e.target.value);
+  });
+
+  return wrap;
+}
+
+function updateProjectField(id, field, value) {
+  const project = projects.find((p) => p.id === id);
+  if (!project) return;
+  project[field] = value;
+  persist();
+  render();
+}
+
+// Days between two ISO date strings, or null if either is missing/invalid.
+function daysBetween(fromISO, toISO) {
+  if (!fromISO || !toISO) return null;
+  const from = new Date(fromISO);
+  const to = new Date(toISO);
+  if (isNaN(from) || isNaN(to)) return null;
+  return Math.round((to - from) / 86400000);
+}
+
+function projectTimelineText(project) {
+  const totalDays = daysBetween(project.startDate, project.endDate);
+  if (totalDays === null) return "Set start/end dates";
+  const elapsed = daysBetween(project.startDate, todayISO());
+  const pct = totalDays > 0 ? Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100))) : 100;
+  const daysLeft = daysBetween(todayISO(), project.endDate);
+  if (daysLeft < 0) return `${pct}% elapsed · overdue by ${Math.abs(daysLeft)}d`;
+  return `${pct}% elapsed · ${daysLeft}d left`;
+}
+
+function renderProjectMetrics(project) {
+  const value = num(project.value);
+  const budget = num(project.budget);
+  const spend = num(project.actualSpend);
+  const remaining = budget - spend;
+  const usedPct = budget > 0 ? Math.round((spend / budget) * 100) : null;
+  const margin = value - spend;
+
+  const projectTasks = tasksForProject(project.id);
+  const done = projectTasks.filter((t) => t.status === "done").length;
+
+  const tiles = [
+    { label: "Budget remaining", value: money(remaining) },
+    { label: "Budget used", value: usedPct === null ? "—" : `${usedPct}%` },
+    { label: "Margin (value − spend)", value: money(margin) },
+    { label: "Timeline", value: projectTimelineText(project) },
+    { label: "Tasks done", value: projectTasks.length ? `${done}/${projectTasks.length}` : "—" },
+  ];
+
+  const wrap = document.createElement("div");
+  wrap.className = "projectmetrics";
+  wrap.innerHTML = tiles
+    .map(
+      (t) => `
+      <div class="metric">
+        <span class="metric__label">${t.label}</span>
+        <span class="metric__value">${t.value}</span>
+      </div>
+    `
+    )
+    .join("");
+
+  return wrap;
+}
+
 function renderProjectDetail(project) {
   const wrap = document.createElement("div");
   wrap.className = "tasklist";
@@ -518,6 +629,9 @@ function renderProjectDetail(project) {
   header.querySelector(".projecthead__back").addEventListener("click", closeProjectDetail);
   header.querySelector(".projecthead__delete").addEventListener("click", () => deleteProject(project.id));
   wrap.appendChild(header);
+
+  wrap.appendChild(renderProjectFields(project));
+  wrap.appendChild(renderProjectMetrics(project));
 
   const addForm = document.createElement("form");
   addForm.className = "inlineadd";
@@ -598,7 +712,16 @@ function toggleTaskDone(id) {
 }
 
 function createProject(name) {
-  projects.push({ id: uid(), name, createdAt: todayISO() });
+  projects.push({
+    id: uid(),
+    name,
+    createdAt: todayISO(),
+    value: "",
+    budget: "",
+    actualSpend: "",
+    startDate: "",
+    endDate: "",
+  });
   persist();
   render();
 }
