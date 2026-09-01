@@ -170,6 +170,12 @@ function updateQuickAddVisibility() {
   form.style.display = currentView === "archive" ? "none" : "";
 }
 
+function nextStatusOf(status) {
+  const idx = COLUMNS.findIndex((c) => c.id === status);
+  if (idx === -1 || idx === COLUMNS.length - 1) return null;
+  return COLUMNS[idx + 1];
+}
+
 function renderCard(task) {
   const card = document.createElement("div");
   card.className = "card";
@@ -178,12 +184,16 @@ function renderCard(task) {
   card.dataset.status = task.status;
 
   const overdue = task.due && task.due < todayISO() && task.status !== "done";
+  const next = nextStatusOf(task.status);
 
   card.innerHTML = `
     <div class="card__title"></div>
     <div class="card__meta">
       ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
       ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
+    </div>
+    <div class="card__footer">
+      ${next ? `<button class="card__advance" type="button">Move to ${next.label} →</button>` : ""}
     </div>
   `;
   card.querySelector(".card__title").textContent = task.title;
@@ -192,6 +202,14 @@ function renderCard(task) {
   card.addEventListener("dragstart", (e) => {
     e.dataTransfer.setData("text/plain", task.id);
   });
+
+  const advanceBtn = card.querySelector(".card__advance");
+  if (advanceBtn) {
+    advanceBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setStatus(task.id, next.id);
+    });
+  }
 
   return card;
 }
