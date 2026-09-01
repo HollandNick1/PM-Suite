@@ -8,6 +8,7 @@
        tasks:    [ ...board task objects, each with an optional projectId... ],
        projects: [ { id, name, createdAt,
                       value, budget, actualSpend,   // free-text numbers
+                      currency,                      // "GBP" | "USD" | "EUR"
                       startDate, endDate } ],        // ISO date strings
        trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
      }
@@ -515,15 +516,23 @@ function num(v) {
   return isNaN(n) ? 0 : n;
 }
 
-function money(n) {
+const CURRENCY_SYMBOLS = { GBP: "£", USD: "$", EUR: "€" };
+
+function money(n, currency) {
+  const symbol = CURRENCY_SYMBOLS[currency] || CURRENCY_SYMBOLS.GBP;
   const sign = n < 0 ? "-" : "";
-  return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `${sign}${symbol}${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function pct(n) {
+  return `${Math.round(n)}%`;
 }
 
 const PROJECT_FIELDS = [
   { key: "value", label: "Project value", type: "number", placeholder: "0" },
   { key: "budget", label: "Budget", type: "number", placeholder: "0" },
   { key: "actualSpend", label: "Actual spend", type: "number", placeholder: "0" },
+  { key: "currency", label: "Currency", type: "select", options: ["GBP", "USD", "EUR"] },
   { key: "startDate", label: "Start date", type: "date" },
   { key: "endDate", label: "End date", type: "date" },
 ];
@@ -531,14 +540,17 @@ const PROJECT_FIELDS = [
 function renderProjectFields(project) {
   const wrap = document.createElement("div");
   wrap.className = "projectfields";
-  wrap.innerHTML = PROJECT_FIELDS.map(
-    (f) => `
-      <label class="projectfields__field">
-        <span>${f.label}</span>
-        <input type="${f.type}" data-field="${f.key}" placeholder="${f.placeholder || ""}" value="${project[f.key] || ""}" />
-      </label>
-    `
-  ).join("");
+  wrap.innerHTML = PROJECT_FIELDS.map((f) => {
+    const control =
+      f.type === "select"
+        ? `<select data-field="${f.key}">
+            ${f.options
+              .map((o) => `<option value="${o}" ${project[f.key] === o ? "selected" : ""}>${o}</option>`)
+              .join("")}
+          </select>`
+        : `<input type="${f.type}" data-field="${f.key}" placeholder="${f.placeholder || ""}" value="${project[f.key] || ""}" />`;
+    return `<label class="projectfields__field"><span>${f.label}</span>${control}</label>`;
+  }).join("");
 
   // "change" (not "input") so the whole detail view — including these
   // fields — can safely re-render after each edit without stealing focus
@@ -583,17 +595,25 @@ function renderProjectMetrics(project) {
   const value = num(project.value);
   const budget = num(project.budget);
   const spend = num(project.actualSpend);
+  const currency = project.currency || "GBP";
   const remaining = budget - spend;
   const usedPct = budget > 0 ? Math.round((spend / budget) * 100) : null;
-  const margin = value - spend;
+  const actualMargin = value - spend;
+  // Projected margin: what's left of the project value once the planned
+  // budget (not actual spend) is accounted for — i.e. margin if spend
+  // lands exactly on budget. Actual margin uses real spend instead.
+  const projectedMarginPct = value > 0 ? ((value - budget) / value) * 100 : null;
+  const actualMarginPct = value > 0 ? ((value - spend) / value) * 100 : null;
 
   const projectTasks = tasksForProject(project.id);
   const done = projectTasks.filter((t) => t.status === "done").length;
 
   const tiles = [
-    { label: "Budget remaining", value: money(remaining) },
+    { label: "Budget remaining", value: money(remaining, currency) },
     { label: "Budget used", value: usedPct === null ? "—" : `${usedPct}%` },
-    { label: "Margin (value − spend)", value: money(margin) },
+    { label: "Margin (value − spend)", value: money(actualMargin, currency) },
+    { label: "Projected margin %", value: projectedMarginPct === null ? "—" : pct(projectedMarginPct) },
+    { label: "Actual margin %", value: actualMarginPct === null ? "—" : pct(actualMarginPct) },
     { label: "Timeline", value: projectTimelineText(project) },
     { label: "Tasks done", value: projectTasks.length ? `${done}/${projectTasks.length}` : "—" },
   ];
@@ -719,6 +739,7 @@ function createProject(name) {
     value: "",
     budget: "",
     actualSpend: "",
+    currency: "GBP",
     startDate: "",
     endDate: "",
   });

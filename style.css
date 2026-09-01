@@ -695,7 +695,8 @@ button, input, select, textarea {
   color: var(--ink-soft);
 }
 
-.projectfields__field input {
+.projectfields__field input,
+.projectfields__field select {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 7px 8px;
