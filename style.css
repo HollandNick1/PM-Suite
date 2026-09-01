@@ -1,377 +1,536 @@
-/* ================================================================
-   Workbench — core app logic
-   Data model: array of task objects, persisted via the `store`
-   object defined in github-sync.js (localStorage today, swappable
-   for the GitHub API later without touching this file).
-================================================================= */
+/* ---------------------------------------------
+   Design tokens
+--------------------------------------------- */
+:root {
+  --bg: #efeee8;
+  --panel: #ffffff;
+  --ink: #23241f;
+  --ink-soft: #63615a;
+  --line: #dad8cf;
+  --line-strong: #b9b6a9;
 
-const COLUMNS = [
-  { id: "backlog", label: "Backlog" },
-  { id: "in-progress", label: "In progress" },
-  { id: "review", label: "Review" },
-  { id: "done", label: "Done" },
-];
+  --accent: #2b5d63;
+  --accent-soft: #dce8e6;
+  --done: #6b8f71;
+  --done-soft: #e3ead2;
+  --warn: #b5502a;
+  --warn-soft: #f3ded4;
+  --priority-high: #b5502a;
+  --priority-normal: #63615a;
+  --priority-low: #9a9890;
 
-let tasks = [];
-let activeTaskId = null;
-let currentView = "board"; // "board" | "backlog" | "archive"
-
-/* ---------------------------------------------------------------
-   Bootstrapping
----------------------------------------------------------------- */
-async function init() {
-  tasks = await store.load();
-  render();
-  wireGlobalEvents();
-  updateSyncIndicator();
+  --radius: 4px;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
-function uid() {
-  return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
-function persist() {
-  store.save(tasks);
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
 }
 
-/* ---------------------------------------------------------------
-   Rendering
----------------------------------------------------------------- */
-function render() {
-  const board = document.getElementById("board");
-  board.classList.toggle("is-list", currentView !== "board");
-
-  if (currentView === "board") {
-    renderBoardView(board);
-  } else if (currentView === "backlog") {
-    renderListView(board, {
-      status: "backlog",
-      emptyText: "Nothing in the backlog. Add a task above to get started.",
-      rowActions: (task) => [
-        { label: "Start", onClick: () => setStatus(task.id, "in-progress") },
-      ],
-    });
-  } else if (currentView === "archive") {
-    renderListView(board, {
-      status: "done",
-      emptyText: "No completed tasks yet — finished work will show up here.",
-      rowActions: (task) => [
-        { label: "Restore", onClick: () => setStatus(task.id, "backlog") },
-      ],
-    });
-  }
-
-  updateQuickAddVisibility();
-  document.getElementById("taskCount").textContent =
-    `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-function setStatus(id, status) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-  task.status = status;
-  persist();
-  render();
+/* ---------------------------------------------
+   App shell
+--------------------------------------------- */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
 }
 
-function renderBoardView(board) {
-  board.innerHTML = "";
-
-  COLUMNS.forEach((col) => {
-    const colTasks = tasks.filter((t) => t.status === col.id);
-
-    const colEl = document.createElement("div");
-    colEl.className = "column";
-    colEl.innerHTML = `
-      <div class="column__head">
-        <span class="column__title">${col.label}</span>
-        <span class="column__count">${colTasks.length}</span>
-      </div>
-      <div class="column__body" data-status="${col.id}"></div>
-      ${col.id === "backlog" ? '<button class="column__add" data-add="backlog">+ Add task</button>' : ""}
-    `;
-
-    const body = colEl.querySelector(".column__body");
-    colTasks
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .forEach((task) => body.appendChild(renderCard(task)));
-
-    wireColumnDrop(body);
-    board.appendChild(colEl);
-  });
-
-  const addBtn = board.querySelector('[data-add="backlog"]');
-  if (addBtn) addBtn.addEventListener("click", () => quickAdd(""));
+/* Rail */
+.rail {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
 }
 
-/* List view — used by the Backlog and Archive tabs. Shows tasks matching
-   a single status as a simple vertical list rather than a board. */
-function renderListView(board, { status, emptyText, rowActions }) {
-  board.innerHTML = "";
-
-  const listTasks = tasks
-    .filter((t) => t.status === status)
-    .sort((a, b) => (b.order ?? 0) - (a.order ?? 0));
-
-  const wrap = document.createElement("div");
-  wrap.className = "tasklist";
-
-  if (listTasks.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "tasklist__empty";
-    empty.textContent = emptyText;
-    wrap.appendChild(empty);
-  } else {
-    listTasks.forEach((task) => wrap.appendChild(renderListRow(task, rowActions(task))));
-  }
-
-  board.appendChild(wrap);
+.rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  margin-bottom: 32px;
+  padding: 0 8px;
 }
 
-function renderListRow(task, actions) {
-  const row = document.createElement("div");
-  row.className = "listrow";
-  row.dataset.status = task.status;
-
-  const overdue = task.due && task.due < todayISO() && task.status !== "done";
-
-  row.innerHTML = `
-    <div class="listrow__main">
-      <span class="listrow__title"></span>
-      <span class="listrow__meta">
-        ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
-        ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
-      </span>
-    </div>
-    <div class="listrow__actions"></div>
-  `;
-  row.querySelector(".listrow__title").textContent = task.title;
-
-  const actionsEl = row.querySelector(".listrow__actions");
-  actions.forEach(({ label, onClick }) => {
-    const btn = document.createElement("button");
-    btn.className = "listrow__action";
-    btn.textContent = label;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    actionsEl.appendChild(btn);
-  });
-
-  row.addEventListener("click", () => openPanel(task.id));
-  return row;
+.rail__mark {
+  color: var(--accent);
+  font-size: 16px;
 }
 
-function updateQuickAddVisibility() {
-  const form = document.getElementById("quickAddForm");
-  // Adding a new task always puts it in the backlog, so hide quick-add
-  // on the Archive tab where a fresh task wouldn't show up anyway.
-  form.style.display = currentView === "archive" ? "none" : "";
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-function nextStatusOf(status) {
-  const idx = COLUMNS.findIndex((c) => c.id === status);
-  if (idx === -1 || idx === COLUMNS.length - 1) return null;
-  return COLUMNS[idx + 1];
+.rail__link {
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
 
-function renderCard(task) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.draggable = true;
-  card.dataset.id = task.id;
-  card.dataset.status = task.status;
-
-  const overdue = task.due && task.due < todayISO() && task.status !== "done";
-  const next = nextStatusOf(task.status);
-
-  card.innerHTML = `
-    <div class="card__title"></div>
-    <div class="card__meta">
-      ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
-      ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
-    </div>
-    <div class="card__footer">
-      ${
-        next
-          ? `<button class="card__advance" type="button">Move to ${next.label} →</button>`
-          : `<button class="card__delete" type="button">Delete</button>`
-      }
-    </div>
-  `;
-  card.querySelector(".card__title").textContent = task.title;
-
-  card.addEventListener("click", () => openPanel(task.id));
-  card.addEventListener("dragstart", (e) => {
-    e.dataTransfer.setData("text/plain", task.id);
-  });
-
-  const advanceBtn = card.querySelector(".card__advance");
-  if (advanceBtn) {
-    advanceBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setStatus(task.id, next.id);
-    });
-  }
-
-  const deleteBtn = card.querySelector(".card__delete");
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteTask(task.id);
-    });
-  }
-
-  return card;
+.rail__link:hover {
+  background: var(--bg);
+  color: var(--ink);
 }
 
-function deleteTask(id) {
-  tasks = tasks.filter((t) => t.id !== id);
-  persist();
-  render();
+.rail__link.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+.rail__sync {
+  margin-top: auto;
+  padding: 10px 10px 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
-/* ---------------------------------------------------------------
-   Drag and drop between columns
----------------------------------------------------------------- */
-function wireColumnDrop(body) {
-  body.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    body.classList.add("is-dragover");
-  });
-  body.addEventListener("dragleave", () => body.classList.remove("is-dragover"));
-  body.addEventListener("drop", (e) => {
-    e.preventDefault();
-    body.classList.remove("is-dragover");
-    const id = e.dataTransfer.getData("text/plain");
-    const task = tasks.find((t) => t.id === id);
-    if (!task) return;
-    task.status = body.dataset.status;
-    persist();
-    render();
-  });
+.rail__sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  display: inline-block;
 }
 
-/* ---------------------------------------------------------------
-   Quick add
----------------------------------------------------------------- */
-function quickAdd(prefill) {
-  const input = document.getElementById("quickAddInput");
-  input.focus();
-  if (prefill) input.value = prefill;
+.rail__sync-dot.is-connected {
+  background: var(--done);
 }
 
-function wireGlobalEvents() {
-  document.getElementById("quickAddForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = document.getElementById("quickAddInput");
-    const title = input.value.trim();
-    if (!title) return;
-    tasks.push({
-      id: uid(),
-      title,
-      notes: "",
-      status: "backlog",
-      priority: "normal",
-      due: "",
-      order: Date.now(),
-      created: todayISO(),
-    });
-    input.value = "";
-    persist();
-    render();
-  });
-
-  document.getElementById("panelClose").addEventListener("click", closePanel);
-  document.getElementById("panelBackdrop").addEventListener("click", (e) => {
-    if (e.target.id === "panelBackdrop") closePanel();
-  });
-
-  document.getElementById("panelDelete").addEventListener("click", () => {
-    deleteTask(activeTaskId);
-    closePanel();
-  });
-
-  ["panelTitle", "panelNotes", "panelStatus", "panelDue", "panelPriority"].forEach((id) => {
-    document.getElementById(id).addEventListener("input", saveActiveTaskFromPanel);
-    document.getElementById(id).addEventListener("change", saveActiveTaskFromPanel);
-  });
-
-  document.getElementById("syncBtn").addEventListener("click", () => {
-    store.connect().then(() => {
-      updateSyncIndicator();
-      init();
-    });
-  });
-
-  document.querySelectorAll(".rail__link").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".rail__link").forEach((b) => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      currentView = btn.dataset.view;
-      closePanel();
-      render();
-    });
-  });
+.rail__sync-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
 }
 
-/* ---------------------------------------------------------------
+.rail__sync-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Main */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.quickadd {
+  flex: 1;
+}
+
+.quickadd__input {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg);
+}
+
+.quickadd__input:focus-visible {
+  background: var(--panel);
+}
+
+.topbar__meta {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* Board */
+.board {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  gap: 20px;
+  padding: 24px 28px;
+  overflow-x: auto;
+  align-items: start;
+}
+
+.column {
+  background: transparent;
+  min-width: 0;
+}
+
+.column__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+
+.column__title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.column__count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.column__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 60px;
+}
+
+.column__body.is-dragover {
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+}
+
+/* Task card */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-soft);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  cursor: grab;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.card:active { cursor: grabbing; }
+
+.card[data-status="backlog"]     { border-left-color: var(--ink-soft); }
+.card[data-status="in-progress"] { border-left-color: var(--accent); }
+.card[data-status="review"]      { border-left-color: var(--priority-high); }
+.card[data-status="done"]        { border-left-color: var(--done); opacity: 0.7; }
+
+.card__title {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.card__due.is-overdue {
+  color: var(--warn);
+}
+
+.card__priority-high { color: var(--priority-high); }
+
+.card__footer {
+  margin-top: 8px;
+}
+
+.card__advance {
+  width: 100%;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.card__advance:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.card__delete {
+  width: 100%;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.card__delete:hover {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.column__add {
+  background: none;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 8px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.column__add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------------------------------------------
+   List view (Backlog / Archive tabs)
+--------------------------------------------- */
+.board.is-list {
+  display: block;
+  max-width: 640px;
+}
+
+.tasklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tasklist__empty {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  padding: 20px 2px;
+}
+
+.listrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-soft);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.listrow[data-status="backlog"] { border-left-color: var(--ink-soft); }
+.listrow[data-status="done"]    { border-left-color: var(--done); }
+
+.listrow__main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.listrow__title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listrow__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+.listrow__actions {
+  flex-shrink: 0;
+}
+
+.listrow__action {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.listrow__action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------------------------------------------
    Task detail panel
----------------------------------------------------------------- */
-function openPanel(id) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-  activeTaskId = id;
-
-  document.getElementById("panelTitle").value = task.title;
-  document.getElementById("panelNotes").value = task.notes || "";
-  document.getElementById("panelStatus").value = task.status;
-  document.getElementById("panelDue").value = task.due || "";
-  document.getElementById("panelPriority").value = task.priority || "normal";
-  document.getElementById("panelMeta").textContent = `Created ${task.created} · ${task.id}`;
-
-  document.getElementById("panelBackdrop").classList.add("is-open");
+--------------------------------------------- */
+.panel-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(35, 36, 31, 0.35);
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8vh;
+  z-index: 10;
 }
 
-function closePanel() {
-  activeTaskId = null;
-  document.getElementById("panelBackdrop").classList.remove("is-open");
+.panel-backdrop.is-open { display: flex; }
+
+.panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 520px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 
-function saveActiveTaskFromPanel() {
-  const task = tasks.find((t) => t.id === activeTaskId);
-  if (!task) return;
-  task.title = document.getElementById("panelTitle").value.trim() || task.title;
-  task.notes = document.getElementById("panelNotes").value;
-  task.status = document.getElementById("panelStatus").value;
-  task.due = document.getElementById("panelDue").value;
-  task.priority = document.getElementById("panelPriority").value;
-  persist();
-  render();
+.panel__row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
-/* ---------------------------------------------------------------
-   Sync indicator (talks to github-sync.js)
----------------------------------------------------------------- */
-function updateSyncIndicator() {
-  const dot = document.getElementById("syncDot");
-  const label = document.getElementById("syncLabel");
-  const btn = document.getElementById("syncBtn");
+.panel__title {
+  flex: 1;
+  border: none;
+  font-family: var(--font-display);
+  font-size: 20px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--line);
+}
 
-  if (store.isConnected()) {
-    dot.classList.add("is-connected");
-    label.textContent = "Synced via GitHub";
-    btn.textContent = "Manage sync";
-  } else {
-    dot.classList.remove("is-connected");
-    label.textContent = "Saved on this device";
-    btn.textContent = "Connect sync";
+.panel__close {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.panel__notes {
+  width: 100%;
+  min-height: 90px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-size: 13.5px;
+  margin-bottom: 14px;
+  resize: vertical;
+}
+
+.panel__fields {
+  gap: 14px;
+}
+
+.panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  flex: 1;
+}
+
+.panel__field select,
+.panel__field input {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.panel__footer {
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.panel__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.panel__delete {
+  background: none;
+  border: none;
+  color: var(--warn);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------
+   Responsive
+--------------------------------------------- */
+@media (max-width: 880px) {
+  .app { grid-template-columns: 1fr; }
+  .rail {
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px;
   }
+  .rail__brand { margin-bottom: 0; }
+  .rail__nav { flex-direction: row; margin-left: 16px; }
+  .rail__sync { display: none; }
+  .board { grid-template-columns: 1fr; }
 }
 
-init();
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
