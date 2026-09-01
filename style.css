@@ -276,6 +276,28 @@ button, input, select, textarea {
 
 .card__priority-high { color: var(--priority-high); }
 
+.card__footer {
+  margin-top: 8px;
+}
+
+.card__advance {
+  width: 100%;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.card__advance:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .column__add {
   background: none;
   border: 1px dashed var(--line-strong);
