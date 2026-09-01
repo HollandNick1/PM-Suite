@@ -14,6 +14,7 @@ const COLUMNS = [
 
 let tasks = [];
 let activeTaskId = null;
+let currentView = "board"; // "board" | "backlog" | "archive"
 
 /* ---------------------------------------------------------------
    Bootstrapping
@@ -38,6 +39,42 @@ function persist() {
 ---------------------------------------------------------------- */
 function render() {
   const board = document.getElementById("board");
+  board.classList.toggle("is-list", currentView !== "board");
+
+  if (currentView === "board") {
+    renderBoardView(board);
+  } else if (currentView === "backlog") {
+    renderListView(board, {
+      status: "backlog",
+      emptyText: "Nothing in the backlog. Add a task above to get started.",
+      rowActions: (task) => [
+        { label: "Start", onClick: () => setStatus(task.id, "in-progress") },
+      ],
+    });
+  } else if (currentView === "archive") {
+    renderListView(board, {
+      status: "done",
+      emptyText: "No completed tasks yet — finished work will show up here.",
+      rowActions: (task) => [
+        { label: "Restore", onClick: () => setStatus(task.id, "backlog") },
+      ],
+    });
+  }
+
+  updateQuickAddVisibility();
+  document.getElementById("taskCount").textContent =
+    `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
+}
+
+function setStatus(id, status) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.status = status;
+  persist();
+  render();
+}
+
+function renderBoardView(board) {
   board.innerHTML = "";
 
   COLUMNS.forEach((col) => {
@@ -63,11 +100,74 @@ function render() {
     board.appendChild(colEl);
   });
 
-  document.getElementById("taskCount").textContent =
-    `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
-
   const addBtn = board.querySelector('[data-add="backlog"]');
   if (addBtn) addBtn.addEventListener("click", () => quickAdd(""));
+}
+
+/* List view — used by the Backlog and Archive tabs. Shows tasks matching
+   a single status as a simple vertical list rather than a board. */
+function renderListView(board, { status, emptyText, rowActions }) {
+  board.innerHTML = "";
+
+  const listTasks = tasks
+    .filter((t) => t.status === status)
+    .sort((a, b) => (b.order ?? 0) - (a.order ?? 0));
+
+  const wrap = document.createElement("div");
+  wrap.className = "tasklist";
+
+  if (listTasks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = emptyText;
+    wrap.appendChild(empty);
+  } else {
+    listTasks.forEach((task) => wrap.appendChild(renderListRow(task, rowActions(task))));
+  }
+
+  board.appendChild(wrap);
+}
+
+function renderListRow(task, actions) {
+  const row = document.createElement("div");
+  row.className = "listrow";
+  row.dataset.status = task.status;
+
+  const overdue = task.due && task.due < todayISO() && task.status !== "done";
+
+  row.innerHTML = `
+    <div class="listrow__main">
+      <span class="listrow__title"></span>
+      <span class="listrow__meta">
+        ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
+        ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
+      </span>
+    </div>
+    <div class="listrow__actions"></div>
+  `;
+  row.querySelector(".listrow__title").textContent = task.title;
+
+  const actionsEl = row.querySelector(".listrow__actions");
+  actions.forEach(({ label, onClick }) => {
+    const btn = document.createElement("button");
+    btn.className = "listrow__action";
+    btn.textContent = label;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    actionsEl.appendChild(btn);
+  });
+
+  row.addEventListener("click", () => openPanel(task.id));
+  return row;
+}
+
+function updateQuickAddVisibility() {
+  const form = document.getElementById("quickAddForm");
+  // Adding a new task always puts it in the backlog, so hide quick-add
+  // on the Archive tab where a fresh task wouldn't show up anyway.
+  form.style.display = currentView === "archive" ? "none" : "";
 }
 
 function renderCard(task) {
@@ -175,11 +275,13 @@ function wireGlobalEvents() {
     });
   });
 
-  // Nav buttons are placeholders for future views (Backlog / Archive filters)
   document.querySelectorAll(".rail__link").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".rail__link").forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
+      currentView = btn.dataset.view;
+      closePanel();
+      render();
     });
   });
 }
