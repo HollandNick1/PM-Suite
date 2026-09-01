@@ -353,11 +353,11 @@ function renderProjectTaskRow(task) {
   const row = document.createElement("div");
   row.className = "subtaskrow";
   row.innerHTML = `
-    <label class="subtaskrow__main">
+    <div class="subtaskrow__main">
       <input type="checkbox" ${done ? "checked" : ""} />
       <span class="subtaskrow__title"></span>
       ${!done ? `<span class="subtaskrow__status">${STATUS_LABEL[task.status] || task.status}</span>` : ""}
-    </label>
+    </div>
     <button class="listrow__action listrow__action--danger" type="button">Delete</button>
   `;
   row.querySelector(".subtaskrow__title").textContent = task.title;
