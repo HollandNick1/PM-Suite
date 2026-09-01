@@ -4,7 +4,6 @@
    object defined in github-sync.js (localStorage today, swappable
    for the GitHub API later without touching this file).
 ================================================================= */
-
 const COLUMNS = [
   { id: "backlog", label: "Backlog" },
   { id: "in-progress", label: "In progress" },
