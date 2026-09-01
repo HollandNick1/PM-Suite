@@ -293,6 +293,86 @@ button, input, select, textarea {
 }
 
 /* ---------------------------------------------
+   List view (Backlog / Archive tabs)
+--------------------------------------------- */
+.board.is-list {
+  display: block;
+  max-width: 640px;
+}
+
+.tasklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tasklist__empty {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  padding: 20px 2px;
+}
+
+.listrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-soft);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.listrow[data-status="backlog"] { border-left-color: var(--ink-soft); }
+.listrow[data-status="done"]    { border-left-color: var(--done); }
+
+.listrow__main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.listrow__title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listrow__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+.listrow__actions {
+  flex-shrink: 0;
+}
+
+.listrow__action {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.listrow__action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------------------------------------------
    Task detail panel
 --------------------------------------------- */
 .panel-backdrop {
