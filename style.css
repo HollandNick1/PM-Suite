@@ -273,7 +273,8 @@ button, input, select, textarea {
 }
 
 .column__body.is-dragover {
-  background: var(--accent-soft);
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
   border-radius: var(--radius);
 }
 
