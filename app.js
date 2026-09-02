@@ -253,9 +253,11 @@ function renderCalendarView(board) {
     <button class="calendar__nav" type="button" data-nav="-1">‹</button>
     <span class="calendar__title">${firstOfMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
     <button class="calendar__nav" type="button" data-nav="1">›</button>
+    <button class="calendar__today" type="button">Today</button>
   `;
   head.querySelector('[data-nav="-1"]').addEventListener("click", () => shiftCalendarMonth(-1));
   head.querySelector('[data-nav="1"]').addEventListener("click", () => shiftCalendarMonth(1));
+  head.querySelector(".calendar__today").addEventListener("click", goToCurrentMonth);
   wrap.appendChild(head);
 
   const grid = document.createElement("div");
@@ -309,6 +311,11 @@ function shiftCalendarMonth(delta) {
   render();
 }
 
+function goToCurrentMonth() {
+  calendarCursor = monthOf(new Date());
+  render();
+}
+
 function openDayInTimeline(dateStr) {
   timelineFilterDate = dateStr;
   switchBoardMode("timeline");
@@ -316,6 +323,7 @@ function openDayInTimeline(dateStr) {
 
 function switchBoardMode(mode) {
   boardMode = mode;
+  if (mode === "calendar") calendarCursor = monthOf(new Date());
   document.querySelectorAll(".viewswitch__btn").forEach((b) => {
     b.classList.toggle("is-active", b.dataset.mode === mode);
   });
