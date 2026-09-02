@@ -104,10 +104,11 @@ function render() {
   const board = document.getElementById("board");
   const isTimeline = currentView === "board" && boardMode === "timeline";
   const isCalendar = currentView === "board" && boardMode === "calendar";
+  const isProjectsList = currentView === "projects" && !activeProjectId;
   const isProjectGantt = currentView === "projects" && activeProjectId && projectTasksView === "gantt";
   board.classList.toggle("is-list", currentView !== "board" || isTimeline);
   board.classList.toggle("is-calendar", isCalendar);
-  board.classList.toggle("is-wide", isProjectGantt);
+  board.classList.toggle("is-wide", isProjectsList || isProjectGantt);
 
   if (currentView === "board") {
     if (isTimeline) {
@@ -802,13 +803,40 @@ const GANTT_ROW_H = 40;
 const GANTT_HEAD_H = 28;
 const GANTT_VISIBLE_ROWS = 10;
 
+// A task can't start before its dependencies allow: for each one, the
+// predecessor's own due date plus that link's lag/lead is the earliest
+// this task could begin. The calculated start is whichever is later —
+// that constraint, or the task's own manually-set start (never earlier).
+// Due dates are fixed by the user, so this doesn't cascade through a
+// predecessor's own calculated start — only its due date is used.
+function calculatedStartFor(task) {
+  const manual = task.start || task.due;
+  if (!manual) return null;
+  let latest = manual;
+  (task.dependencies || []).forEach((dep) => {
+    const predecessor = tasks.find((t) => t.id === dep.taskId);
+    if (!predecessor || !predecessor.due) return;
+    const predEnd = new Date(predecessor.due);
+    predEnd.setDate(predEnd.getDate() + num(dep.lag));
+    const candidate = predEnd.toISOString().slice(0, 10);
+    if (candidate > latest) latest = candidate;
+  });
+  return latest;
+}
+
 function renderProjectGantt(project) {
   const wrap = document.createElement("div");
   wrap.className = "ganttwrap";
 
-  // A task needs at least a due date to place a bar; start defaults to
-  // the due date (a one-day bar) when it isn't set.
-  const span = (t) => ({ start: t.start || t.due, end: t.due || t.start });
+  // Start is the dependency-calculated date (falling back to the task's
+  // own start/due) rather than the raw field, so a predecessor finishing
+  // late correctly pushes this bar out. If that pushes the start past the
+  // task's own due date, it's flagged as a conflict on the bar.
+  const span = (t) => {
+    const start = calculatedStartFor(t) || t.due;
+    const end = t.due || start;
+    return { start, end, conflict: !!(t.due && start > t.due) };
+  };
   const projectTasks = tasksForProject(project.id).filter((t) => t.due || t.start);
 
   if (projectTasks.length === 0) {
@@ -891,7 +919,7 @@ function renderProjectGantt(project) {
 
   const barRects = new Map();
   sorted.forEach((task, i) => {
-    const { start, end } = span(task);
+    const { start, end, conflict } = span(task);
     const x1 = xFor(start);
     const x2 = Math.max(x1 + pxPerDay * 0.6, xFor(end) + pxPerDay);
     barRects.set(task.id, { x1, x2, y: i * GANTT_ROW_H + GANTT_ROW_H / 2 });
@@ -904,9 +932,10 @@ function renderProjectGantt(project) {
     const bar = document.createElement("div");
     bar.className = "gantt__bar";
     if (task.status === "done") bar.classList.add("is-done");
+    if (conflict) bar.classList.add("is-conflict");
     bar.style.left = x1 + "px";
     bar.style.width = x2 - x1 + "px";
-    bar.title = task.title;
+    bar.title = task.title + (conflict ? " — dependencies push the start past its due date" : "");
     bar.textContent = task.title;
     bar.addEventListener("click", () => openPanel(task.id));
     row.appendChild(bar);

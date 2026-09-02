@@ -886,6 +886,11 @@ button, input, select, textarea {
   opacity: 0.75;
 }
 
+.gantt__bar.is-conflict {
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--warn-soft);
+}
+
 .gantt__today {
   position: absolute;
   top: 0;
