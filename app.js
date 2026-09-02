@@ -846,7 +846,10 @@ function computeProjectSchedule(projectTasks) {
       const predEnd = calcEnd(dep.taskId);
       if (!predEnd) return;
       const d = new Date(predEnd);
-      d.setDate(d.getDate() + num(dep.lag));
+      // A predecessor's due date is fully occupied by it, so a successor
+      // starts the day after by default (0 lag) — lag/lead is an
+      // additional adjustment on top of that natural one-day gap.
+      d.setDate(d.getDate() + 1 + num(dep.lag));
       const candidate = d.toISOString().slice(0, 10);
       if (latest === null || candidate > latest) latest = candidate;
     });
@@ -1457,7 +1460,7 @@ function renderDependencyList(task) {
       const predecessor = tasks.find((t) => t.id === dep.taskId);
       const name = predecessor ? predecessor.title : "(deleted task)";
       const lag = num(dep.lag);
-      const lagText = lag === 0 ? "no lag" : lag > 0 ? `+${lag}d lag` : `${lag}d lead`;
+      const lagText = lag === 0 ? "starts next day" : lag > 0 ? `+${lag}d lag` : `${lag}d lead`;
       return `
         <div class="panel__dep" data-dep-id="${dep.taskId}">
           <span>${name} <span class="panel__dep-lag">(${lagText})</span></span>
