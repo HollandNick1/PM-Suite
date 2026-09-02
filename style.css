@@ -761,6 +761,146 @@ button, input, select, textarea {
   margin: 24px 0 10px;
 }
 
+.sectionhead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionhead-row .section-title {
+  margin: 24px 0 10px 0;
+}
+
+/* Gantt view (project detail) */
+.ganttwrap {
+  margin-bottom: 20px;
+}
+
+.gantt__layout {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.gantt__sidebar {
+  flex-shrink: 0;
+  width: 160px;
+  border-right: 1px solid var(--line);
+}
+
+.gantt__sidebar-head {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.gantt__name {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt__name:hover {
+  color: var(--accent);
+}
+
+.gantt__scroll {
+  overflow-x: auto;
+  flex: 1;
+}
+
+.gantt__header {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+}
+
+.gantt__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+  border-left: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.gantt__chart {
+  position: relative;
+}
+
+.gantt__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.gantt__bar {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  background: var(--accent);
+  border-radius: 4px;
+  color: var(--panel);
+  font-size: 11px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gantt__bar.is-done {
+  background: var(--done);
+  opacity: 0.75;
+}
+
+.gantt__today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--warn);
+}
+
+.gantt__deps {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.gantt__deplink {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.5;
+}
+
+.gantt__deplabel {
+  font-size: 9px;
+  fill: var(--ink-soft);
+  font-family: var(--font-mono);
+}
+
 /* Parts table (manufacturing items tracked per project) */
 .partstable {
   display: flex;
@@ -961,6 +1101,88 @@ button, input, select, textarea {
   color: var(--warn);
   font-size: 12.5px;
   cursor: pointer;
+}
+
+.panel__deps {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-bottom: 14px;
+}
+
+.panel__deps-title {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+
+.panel__deps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.panel__deps-empty {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0 0 10px;
+}
+
+.panel__dep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.panel__dep-lag {
+  font-family: var(--font-mono);
+  color: var(--ink-soft);
+}
+
+.panel__dep button {
+  background: none;
+  border: none;
+  color: var(--warn);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.panel__deps-add {
+  display: flex;
+  gap: 8px;
+}
+
+.panel__deps-add select {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.panel__deps-add input {
+  width: 90px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.panel__deps-add button {
+  background: var(--accent);
+  color: var(--panel);
+  border: none;
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------

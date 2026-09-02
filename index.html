@@ -101,11 +101,6 @@
       </label>
 
       <label class="panel__field">
-        <span>Due date</span>
-        <input type="date" id="panelDue" />
-      </label>
-
-      <label class="panel__field">
         <span>Priority</span>
         <select id="panelPriority">
           <option value="low">Low</option>
@@ -116,12 +111,34 @@
     </div>
 
     <div class="panel__row panel__fields">
+      <label class="panel__field">
+        <span>Start date</span>
+        <input type="date" id="panelStart" />
+      </label>
+
+      <label class="panel__field">
+        <span>Due date</span>
+        <input type="date" id="panelDue" />
+      </label>
+    </div>
+
+    <div class="panel__row panel__fields">
       <label class="panel__field panel__field--wide">
         <span>Project</span>
         <select id="panelProject">
           <option value="">No project</option>
         </select>
       </label>
+    </div>
+
+    <div class="panel__deps" id="panelDeps" hidden>
+      <span class="panel__deps-title">Depends on</span>
+      <div class="panel__deps-list" id="panelDepsList"></div>
+      <div class="panel__deps-add">
+        <select id="panelDepsSelect"></select>
+        <input type="number" id="panelDepsLag" placeholder="Lag (days)" value="0" />
+        <button type="button" id="panelDepsAdd">Add</button>
+      </div>
     </div>
 
     <div class="panel__row panel__footer">

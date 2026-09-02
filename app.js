@@ -5,7 +5,14 @@
    later without touching this file):
 
      {
-       tasks:    [ ...board task objects, each with an optional projectId... ],
+       tasks:    [ ...board task objects, each with an optional projectId,
+                    an optional start date (alongside the existing due
+                    date), and dependencies: [ { taskId, lag } ] — other
+                    tasks (same project) that must finish first, lag being
+                    a day offset after that finish (negative = lead time).
+                    Finish-to-start only, no auto-rescheduling: dependencies
+                    are shown on the project Gantt view but dates stay
+                    whatever the user sets ... ],
        projects: [ { id, name, createdAt,
                       value, budget, actualSpend,   // free-text numbers
                       currency,                      // "GBP" | "USD" | "EUR"
@@ -39,6 +46,7 @@ let trash = [];
 
 let activeTaskId = null;
 let activeProjectId = null; // set while viewing a single project's sub-tasks
+let projectTasksView = "list"; // "list" | "gantt" — only meaningful within a project's detail page
 let currentView = "board"; // "board" | "projects" | "archive"
 let boardMode = "kanban"; // "kanban" | "timeline" | "calendar" — only meaningful on the Board tab
 let timelineFilterDate = null; // set by clicking a Calendar day; narrows Timeline to that date
@@ -782,6 +790,164 @@ function renderProjectParts(project) {
   return wrap;
 }
 
+/* ---------------------------------------------------------------
+   Gantt view — a simple day-scaled bar chart of a project's tasks,
+   with dependency connectors drawn between predecessor and successor
+   bars (finish-to-start; the lag is only shown as a label, dates are
+   never auto-shifted).
+---------------------------------------------------------------- */
+const GANTT_ROW_H = 40;
+const GANTT_HEAD_H = 28;
+
+function renderProjectGantt(project) {
+  const wrap = document.createElement("div");
+  wrap.className = "ganttwrap";
+
+  // A task needs at least a due date to place a bar; start defaults to
+  // the due date (a one-day bar) when it isn't set.
+  const span = (t) => ({ start: t.start || t.due, end: t.due || t.start });
+  const projectTasks = tasksForProject(project.id).filter((t) => t.due || t.start);
+
+  if (projectTasks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "No dated tasks yet. Set a due date (and optionally a start date) on a task to see it here.";
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const allDates = [];
+  projectTasks.forEach((t) => {
+    const s = span(t);
+    allDates.push(s.start, s.end);
+  });
+  const dayMs = 86400000;
+  const rangeStart = new Date(allDates.reduce((a, b) => (a < b ? a : b)));
+  rangeStart.setDate(rangeStart.getDate() - 1);
+  const rangeEnd = new Date(allDates.reduce((a, b) => (a > b ? a : b)));
+  rangeEnd.setDate(rangeEnd.getDate() + 2);
+
+  const totalDays = Math.max(1, Math.round((rangeEnd - rangeStart) / dayMs));
+  const pxPerDay = totalDays > 90 ? 12 : totalDays > 45 ? 18 : totalDays > 20 ? 28 : 40;
+  const chartWidth = totalDays * pxPerDay;
+  const xFor = (iso) => Math.round(((new Date(iso) - rangeStart) / dayMs) * pxPerDay);
+
+  const sorted = projectTasks.slice().sort((a, b) => span(a).start.localeCompare(span(b).start));
+
+  const layout = document.createElement("div");
+  layout.className = "gantt__layout";
+
+  // Sidebar — task names, fixed width, scrolls vertically with the chart
+  const sidebar = document.createElement("div");
+  sidebar.className = "gantt__sidebar";
+  const sidebarHead = document.createElement("div");
+  sidebarHead.className = "gantt__sidebar-head";
+  sidebarHead.style.height = GANTT_HEAD_H + "px";
+  sidebarHead.textContent = "Task";
+  sidebar.appendChild(sidebarHead);
+  sorted.forEach((task) => {
+    const nameRow = document.createElement("div");
+    nameRow.className = "gantt__name";
+    nameRow.style.height = GANTT_ROW_H + "px";
+    nameRow.textContent = task.title;
+    nameRow.title = task.title;
+    nameRow.addEventListener("click", () => openPanel(task.id));
+    sidebar.appendChild(nameRow);
+  });
+  layout.appendChild(sidebar);
+
+  // Header — date ticks
+  const header = document.createElement("div");
+  header.className = "gantt__header";
+  header.style.width = chartWidth + "px";
+  header.style.height = GANTT_HEAD_H + "px";
+  const tickEvery = totalDays > 60 ? 14 : totalDays > 30 ? 7 : totalDays > 14 ? 3 : 1;
+  for (let d = 0; d <= totalDays; d += tickEvery) {
+    const tickDate = new Date(rangeStart.getTime() + d * dayMs);
+    const tick = document.createElement("span");
+    tick.className = "gantt__tick";
+    tick.style.left = d * pxPerDay + "px";
+    tick.textContent = formatDate(tickDate.toISOString().slice(0, 10)).slice(0, 5);
+    header.appendChild(tick);
+  }
+
+  // Chart — bars + dependency connectors, absolutely positioned
+  const chart = document.createElement("div");
+  chart.className = "gantt__chart";
+  chart.style.width = chartWidth + "px";
+  chart.style.height = sorted.length * GANTT_ROW_H + "px";
+
+  const todayStr = todayISO();
+  if (todayStr >= rangeStart.toISOString().slice(0, 10) && todayStr <= rangeEnd.toISOString().slice(0, 10)) {
+    const todayLine = document.createElement("div");
+    todayLine.className = "gantt__today";
+    todayLine.style.left = xFor(todayStr) + "px";
+    chart.appendChild(todayLine);
+  }
+
+  const barRects = new Map();
+  sorted.forEach((task, i) => {
+    const { start, end } = span(task);
+    const x1 = xFor(start);
+    const x2 = Math.max(x1 + pxPerDay * 0.6, xFor(end) + pxPerDay);
+    barRects.set(task.id, { x1, x2, y: i * GANTT_ROW_H + GANTT_ROW_H / 2 });
+
+    const row = document.createElement("div");
+    row.className = "gantt__row";
+    row.style.top = i * GANTT_ROW_H + "px";
+    row.style.height = GANTT_ROW_H + "px";
+
+    const bar = document.createElement("div");
+    bar.className = "gantt__bar";
+    if (task.status === "done") bar.classList.add("is-done");
+    bar.style.left = x1 + "px";
+    bar.style.width = x2 - x1 + "px";
+    bar.title = task.title;
+    bar.textContent = task.title;
+    bar.addEventListener("click", () => openPanel(task.id));
+    row.appendChild(bar);
+    chart.appendChild(row);
+  });
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("class", "gantt__deps");
+  svg.setAttribute("width", chartWidth);
+  svg.setAttribute("height", sorted.length * GANTT_ROW_H);
+
+  sorted.forEach((task) => {
+    (task.dependencies || []).forEach((dep) => {
+      const from = barRects.get(dep.taskId);
+      const to = barRects.get(task.id);
+      if (!from || !to) return; // predecessor has no due date, so isn't on this chart
+      const midX = from.x2 + 12;
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", `M ${from.x2} ${from.y} H ${midX} V ${to.y} H ${to.x1}`);
+      path.setAttribute("class", "gantt__deplink");
+      svg.appendChild(path);
+
+      if (num(dep.lag) !== 0) {
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", midX + 3);
+        label.setAttribute("y", (from.y + to.y) / 2 - 3);
+        label.setAttribute("class", "gantt__deplabel");
+        label.textContent = (num(dep.lag) > 0 ? "+" : "") + num(dep.lag) + "d";
+        svg.appendChild(label);
+      }
+    });
+  });
+  chart.appendChild(svg);
+
+  const scrollArea = document.createElement("div");
+  scrollArea.className = "gantt__scroll";
+  scrollArea.appendChild(header);
+  scrollArea.appendChild(chart);
+  layout.appendChild(scrollArea);
+
+  wrap.appendChild(layout);
+  return wrap;
+}
+
 function renderProjectDetail(project) {
   const wrap = document.createElement("div");
   wrap.className = "tasklist";
@@ -801,34 +967,50 @@ function renderProjectDetail(project) {
   wrap.appendChild(renderProjectFields(project));
   wrap.appendChild(renderProjectMetrics(project));
 
-  const tasksHead = document.createElement("h3");
-  tasksHead.className = "section-title";
-  tasksHead.textContent = "Tasks";
+  const tasksHead = document.createElement("div");
+  tasksHead.className = "sectionhead-row";
+  tasksHead.innerHTML = `
+    <h3 class="section-title">Tasks</h3>
+    <div class="viewswitch">
+      <button class="viewswitch__btn ${projectTasksView === "list" ? "is-active" : ""}" data-taskview="list" type="button">List</button>
+      <button class="viewswitch__btn ${projectTasksView === "gantt" ? "is-active" : ""}" data-taskview="gantt" type="button">Gantt</button>
+    </div>
+  `;
+  tasksHead.querySelectorAll("[data-taskview]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      projectTasksView = btn.dataset.taskview;
+      render();
+    });
+  });
   wrap.appendChild(tasksHead);
 
-  const addForm = document.createElement("form");
-  addForm.className = "inlineadd";
-  addForm.innerHTML = `
-    <input class="inlineadd__input" type="text" placeholder="Add a task…" autocomplete="off" />
-    <button class="inlineadd__btn" type="submit">Add</button>
-  `;
-  addForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = addForm.querySelector(".inlineadd__input");
-    const title = input.value.trim();
-    if (!title) return;
-    addProjectTask(project.id, title);
-  });
-  wrap.appendChild(addForm);
-
-  const projectTasks = tasksForProject(project.id);
-  if (projectTasks.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "tasklist__empty";
-    empty.textContent = "No tasks yet. Add one above, or assign an existing board task to this project from its detail panel.";
-    wrap.appendChild(empty);
+  if (projectTasksView === "gantt") {
+    wrap.appendChild(renderProjectGantt(project));
   } else {
-    projectTasks.forEach((task) => wrap.appendChild(renderProjectTaskRow(task)));
+    const addForm = document.createElement("form");
+    addForm.className = "inlineadd";
+    addForm.innerHTML = `
+      <input class="inlineadd__input" type="text" placeholder="Add a task…" autocomplete="off" />
+      <button class="inlineadd__btn" type="submit">Add</button>
+    `;
+    addForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = addForm.querySelector(".inlineadd__input");
+      const title = input.value.trim();
+      if (!title) return;
+      addProjectTask(project.id, title);
+    });
+    wrap.appendChild(addForm);
+
+    const projectTasks = tasksForProject(project.id);
+    if (projectTasks.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "tasklist__empty";
+      empty.textContent = "No tasks yet. Add one above, or assign an existing board task to this project from its detail panel.";
+      wrap.appendChild(empty);
+    } else {
+      projectTasks.forEach((task) => wrap.appendChild(renderProjectTaskRow(task)));
+    }
   }
 
   const partsHead = document.createElement("h3");
@@ -909,6 +1091,7 @@ function createProject(name) {
 
 function openProject(id) {
   activeProjectId = id;
+  projectTasksView = "list";
   render();
 }
 
@@ -937,10 +1120,12 @@ function addProjectTask(projectId, title) {
     notes: "",
     status: "backlog",
     priority: "normal",
+    start: "",
     due: defaultDueDate(),
     order: Date.now(),
     created: todayISO(),
     projectId,
+    dependencies: [],
   });
   persist();
   render();
@@ -1027,10 +1212,12 @@ function wireGlobalEvents() {
       notes: "",
       status: "backlog",
       priority: "normal",
+      start: "",
       due: defaultDueDate(),
       order: Date.now(),
       created: todayISO(),
       projectId: "",
+      dependencies: [],
     });
     input.value = "";
     persist();
@@ -1047,9 +1234,16 @@ function wireGlobalEvents() {
     closePanel();
   });
 
-  ["panelTitle", "panelNotes", "panelStatus", "panelDue", "panelPriority", "panelProject"].forEach((id) => {
+  ["panelTitle", "panelNotes", "panelStatus", "panelStart", "panelDue", "panelPriority", "panelProject"].forEach((id) => {
     document.getElementById(id).addEventListener("input", saveActiveTaskFromPanel);
     document.getElementById(id).addEventListener("change", saveActiveTaskFromPanel);
+  });
+
+  document.getElementById("panelDepsAdd").addEventListener("click", () => {
+    const depId = document.getElementById("panelDepsSelect").value;
+    const lag = document.getElementById("panelDepsLag").value;
+    addDependency(activeTaskId, depId, lag);
+    document.getElementById("panelDepsLag").value = "0";
   });
 
   document.getElementById("syncBtn").addEventListener("click", () => {
@@ -1106,9 +1300,11 @@ function openPanel(id) {
   document.getElementById("panelTitle").value = task.title;
   document.getElementById("panelNotes").value = task.notes || "";
   document.getElementById("panelStatus").value = task.status;
+  document.getElementById("panelStart").value = task.start || "";
   document.getElementById("panelDue").value = task.due || "";
   document.getElementById("panelPriority").value = task.priority || "normal";
   populateProjectSelect(task.projectId);
+  populateDependencyUI(task);
   document.getElementById("panelMeta").textContent = `Created ${formatDate(task.created)} · ${task.id}`;
 
   document.getElementById("panelBackdrop").classList.add("is-open");
@@ -1125,10 +1321,92 @@ function saveActiveTaskFromPanel() {
   task.title = document.getElementById("panelTitle").value.trim() || task.title;
   task.notes = document.getElementById("panelNotes").value;
   task.status = document.getElementById("panelStatus").value;
+  task.start = document.getElementById("panelStart").value;
   task.due = document.getElementById("panelDue").value;
   task.priority = document.getElementById("panelPriority").value;
-  task.projectId = document.getElementById("panelProject").value;
+
+  const newProjectId = document.getElementById("panelProject").value;
+  if (newProjectId !== task.projectId) {
+    // Dependencies only make sense within one project's task list, so
+    // moving a task to a different project (or off one) drops them.
+    task.dependencies = [];
+    task.projectId = newProjectId;
+    populateDependencyUI(task);
+  }
+
   persist();
+  render();
+}
+
+/* ---------------------------------------------------------------
+   Task dependencies (finish-to-start, with lead/lag in days) —
+   only offered for tasks that belong to a project, since the picker
+   lists that project's other tasks as possible predecessors.
+---------------------------------------------------------------- */
+function populateDependencyUI(task) {
+  const section = document.getElementById("panelDeps");
+  const select = document.getElementById("panelDepsSelect");
+
+  if (!task.projectId) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const candidates = tasksForProject(task.projectId).filter((t) => t.id !== task.id);
+  select.innerHTML = candidates.map((t) => `<option value="${t.id}">${t.title}</option>`).join("");
+
+  renderDependencyList(task);
+}
+
+function renderDependencyList(task) {
+  const list = document.getElementById("panelDepsList");
+  const deps = task.dependencies || [];
+
+  if (deps.length === 0) {
+    list.innerHTML = '<p class="panel__deps-empty">No dependencies — this task can start any time.</p>';
+    return;
+  }
+
+  list.innerHTML = deps
+    .map((dep) => {
+      const predecessor = tasks.find((t) => t.id === dep.taskId);
+      const name = predecessor ? predecessor.title : "(deleted task)";
+      const lag = num(dep.lag);
+      const lagText = lag === 0 ? "no lag" : lag > 0 ? `+${lag}d lag` : `${lag}d lead`;
+      return `
+        <div class="panel__dep" data-dep-id="${dep.taskId}">
+          <span>${name} <span class="panel__dep-lag">(${lagText})</span></span>
+          <button type="button" data-remove-dep="${dep.taskId}">Remove</button>
+        </div>
+      `;
+    })
+    .join("");
+
+  list.querySelectorAll("[data-remove-dep]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      removeDependency(task.id, btn.dataset.removeDep);
+    });
+  });
+}
+
+function addDependency(taskId, depId, lag) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || !depId || depId === taskId) return;
+  if (!task.dependencies) task.dependencies = [];
+  if (task.dependencies.some((d) => d.taskId === depId)) return;
+  task.dependencies.push({ taskId: depId, lag: num(lag) });
+  persist();
+  renderDependencyList(task);
+  render();
+}
+
+function removeDependency(taskId, depId) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+  task.dependencies = (task.dependencies || []).filter((d) => d.taskId !== depId);
+  persist();
+  renderDependencyList(task);
   render();
 }
 
