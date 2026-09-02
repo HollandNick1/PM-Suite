@@ -500,7 +500,8 @@ function renderProjectCard(project) {
   const done = projectTasks.filter((t) => t.status === "done").length;
   const total = projectTasks.length;
   const budget = num(project.budget);
-  const usedPct = budget > 0 ? Math.round((num(project.actualSpend) / budget) * 100) : null;
+  const spend = num(project.actualSpend) + partsTotalCost(project);
+  const usedPct = budget > 0 ? Math.round((spend / budget) * 100) : null;
 
   const row = document.createElement("div");
   row.className = "listrow";
@@ -552,7 +553,7 @@ function pct(n) {
 const PROJECT_FIELDS = [
   { key: "value", label: "Project value", type: "number", placeholder: "0" },
   { key: "budget", label: "Budget", type: "number", placeholder: "0" },
-  { key: "actualSpend", label: "Actual spend", type: "number", placeholder: "0" },
+  { key: "actualSpend", label: "Other spend (excl. parts)", type: "number", placeholder: "0" },
   { key: "currency", label: "Currency", type: "select", options: ["GBP", "USD", "EUR"] },
   { key: "startDate", label: "Start date", type: "date" },
   { key: "endDate", label: "End date", type: "date" },
@@ -615,23 +616,27 @@ function projectTimelineText(project) {
 function renderProjectMetrics(project) {
   const value = num(project.value);
   const budget = num(project.budget);
-  const spend = num(project.actualSpend);
   const currency = project.currency || "GBP";
+  const parts = projectParts(project);
+  const partsCost = partsTotalCost(project);
+  // Actual spend is manual entry (labour, misc costs) — parts cost is
+  // tracked separately in its own table, so every budget/margin figure
+  // has to add the two together to reflect what's really been spent.
+  const spend = num(project.actualSpend) + partsCost;
   const remaining = budget - spend;
   const usedPct = budget > 0 ? Math.round((spend / budget) * 100) : null;
   const actualMargin = value - spend;
   // Projected margin: what's left of the project value once the planned
   // budget (not actual spend) is accounted for — i.e. margin if spend
-  // lands exactly on budget. Actual margin uses real spend instead.
+  // lands exactly on budget. Actual margin uses real total spend instead.
   const projectedMarginPct = value > 0 ? ((value - budget) / value) * 100 : null;
   const actualMarginPct = value > 0 ? ((value - spend) / value) * 100 : null;
 
   const projectTasks = tasksForProject(project.id);
   const done = projectTasks.filter((t) => t.status === "done").length;
-  const parts = projectParts(project);
-  const partsCost = partsTotalCost(project);
 
   const tiles = [
+    { label: "Total spend (incl. parts)", value: money(spend, currency) },
     { label: "Budget remaining", value: money(remaining, currency) },
     { label: "Budget used", value: usedPct === null ? "—" : `${usedPct}%` },
     { label: "Margin (value − spend)", value: money(actualMargin, currency) },
@@ -663,7 +668,7 @@ function renderProjectMetrics(project) {
    separate from tasks (a part isn't work to do, it's a physical
    item with a quantity, a cost, and a manufacturing status)
 ---------------------------------------------------------------- */
-const PART_STATUSES = ["Pending", "Ordered", "In production", "Received", "Installed"];
+const PART_STATUSES = ["Pending", "Ordered", "In production", "Received", "Delivered"];
 
 function projectParts(project) {
   return project.parts || [];
