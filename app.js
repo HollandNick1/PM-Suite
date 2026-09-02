@@ -145,7 +145,6 @@ function renderBoardView(board) {
         <span class="column__count">${colTasks.length}</span>
       </div>
       <div class="column__body" data-status="${col.id}"></div>
-      ${col.id === "backlog" ? '<button class="column__add" data-add="backlog">+ Add task</button>' : ""}
     `;
 
     const body = colEl.querySelector(".column__body");
@@ -153,12 +152,21 @@ function renderBoardView(board) {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .forEach((task) => body.appendChild(renderCard(task)));
 
+    // Lives inside the body (not after it) so it sits right under the last
+    // card rather than getting pushed to the bottom of a stretched column —
+    // the empty space below it is still part of the drop target either way.
+    if (col.id === "backlog") {
+      const addBtn = document.createElement("button");
+      addBtn.className = "column__add";
+      addBtn.type = "button";
+      addBtn.textContent = "+ Add task";
+      addBtn.addEventListener("click", () => quickAdd(""));
+      body.appendChild(addBtn);
+    }
+
     wireColumnDrop(body);
     board.appendChild(colEl);
   });
-
-  const addBtn = board.querySelector('[data-add="backlog"]');
-  if (addBtn) addBtn.addEventListener("click", () => quickAdd(""));
 }
 
 /* ---------------------------------------------------------------
