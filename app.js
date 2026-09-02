@@ -809,35 +809,86 @@ const GANTT_VISIBLE_ROWS = 10;
 // that constraint, or the task's own manually-set start (never earlier).
 // Due dates are fixed by the user, so this doesn't cascade through a
 // predecessor's own calculated start — only its due date is used.
-function calculatedStartFor(task) {
-  const manual = task.start || task.due;
-  if (!manual) return null;
-  let latest = manual;
-  (task.dependencies || []).forEach((dep) => {
-    const predecessor = tasks.find((t) => t.id === dep.taskId);
-    if (!predecessor || !predecessor.due) return;
-    const predEnd = new Date(predecessor.due);
-    predEnd.setDate(predEnd.getDate() + num(dep.lag));
-    const candidate = predEnd.toISOString().slice(0, 10);
-    if (candidate > latest) latest = candidate;
-  });
-  return latest;
+// Builds calculated start/end for every task in a project, cascading
+// through the whole dependency chain: a task's calculated date is driven
+// by its predecessors' calculated finish (not their raw due date), so a
+// task pushed out by ITS OWN dependencies passes that push downstream.
+// When a task has dependencies, they fully determine its calculated
+// start (the latest predecessor-finish-plus-lag) — its own start/due
+// field only matters as a baseline for tasks with no dependencies, and
+// to preserve each task's planned duration once it does get pushed.
+function computeProjectSchedule(projectTasks) {
+  const byId = new Map(projectTasks.map((t) => [t.id, t]));
+  const startCache = new Map();
+  const endCache = new Map();
+  const visiting = new Set(); // cycle guard
+
+  function plannedStart(t) {
+    return t.start || t.due;
+  }
+  function plannedDuration(t) {
+    const s = plannedStart(t);
+    if (!s || !t.due) return 0;
+    return Math.max(0, daysBetween(s, t.due) || 0);
+  }
+
+  function calcStart(id) {
+    if (startCache.has(id)) return startCache.get(id);
+    const t = byId.get(id);
+    if (!t) return null;
+    if (visiting.has(id)) return plannedStart(t); // break cycles rather than recurse forever
+    visiting.add(id);
+
+    let start = plannedStart(t);
+    const deps = t.dependencies || [];
+    let latest = null;
+    deps.forEach((dep) => {
+      const predEnd = calcEnd(dep.taskId);
+      if (!predEnd) return;
+      const d = new Date(predEnd);
+      d.setDate(d.getDate() + num(dep.lag));
+      const candidate = d.toISOString().slice(0, 10);
+      if (latest === null || candidate > latest) latest = candidate;
+    });
+    if (latest !== null) start = latest; // dependencies fully drive the date, not just a floor on it
+
+    visiting.delete(id);
+    startCache.set(id, start);
+    return start;
+  }
+
+  function calcEnd(id) {
+    if (endCache.has(id)) return endCache.get(id);
+    const t = byId.get(id);
+    if (!t) return null;
+    const start = calcStart(id);
+    if (!start) return null;
+    const d = new Date(start);
+    d.setDate(d.getDate() + plannedDuration(t));
+    const end = d.toISOString().slice(0, 10);
+    endCache.set(id, end);
+    return end;
+  }
+
+  return { calcStart, calcEnd };
 }
 
 function renderProjectGantt(project) {
   const wrap = document.createElement("div");
   wrap.className = "ganttwrap";
 
-  // Start is the dependency-calculated date (falling back to the task's
-  // own start/due) rather than the raw field, so a predecessor finishing
-  // late correctly pushes this bar out. If that pushes the start past the
-  // task's own due date, it's flagged as a conflict on the bar.
-  const span = (t) => {
-    const start = calculatedStartFor(t) || t.due;
-    const end = t.due || start;
-    return { start, end, conflict: !!(t.due && start > t.due) };
-  };
   const projectTasks = tasksForProject(project.id).filter((t) => t.due || t.start);
+  const schedule = computeProjectSchedule(projectTasks);
+
+  // The bar spans the calculated start/end (cascaded through the whole
+  // dependency chain, preserving each task's planned duration); if that
+  // calculated finish lands after the task's own due date, it's flagged
+  // as a conflict rather than silently missing the deadline.
+  const span = (t) => {
+    const start = schedule.calcStart(t.id) || t.due;
+    const end = schedule.calcEnd(t.id) || start;
+    return { start, end, conflict: !!(t.due && end > t.due) };
+  };
 
   if (projectTasks.length === 0) {
     const empty = document.createElement("p");
