@@ -9,9 +9,14 @@
        projects: [ { id, name, createdAt,
                       value, budget, actualSpend,   // free-text numbers
                       currency,                      // "GBP" | "USD" | "EUR"
-                      startDate, endDate } ],        // ISO date strings
+                      startDate, endDate,             // ISO date strings
+                      parts: [ { id, name, quantity, unitCost, status } ] } ],
        trash:    [ ...deleted task objects, with deletedAt/prevStatus... ]
      }
+
+   Parts are individual manufacturing items tracked per project — a
+   physical thing with a quantity/cost/status, not work to be done, so
+   they live on the project directly rather than as board tasks.
 
    A project doesn't keep its own task list — the Projects tab just shows
    whichever board tasks have that project's id, sorted by creation. That
@@ -623,6 +628,8 @@ function renderProjectMetrics(project) {
 
   const projectTasks = tasksForProject(project.id);
   const done = projectTasks.filter((t) => t.status === "done").length;
+  const parts = projectParts(project);
+  const partsCost = partsTotalCost(project);
 
   const tiles = [
     { label: "Budget remaining", value: money(remaining, currency) },
@@ -632,6 +639,7 @@ function renderProjectMetrics(project) {
     { label: "Actual margin %", value: actualMarginPct === null ? "—" : pct(actualMarginPct) },
     { label: "Timeline", value: projectTimelineText(project) },
     { label: "Tasks done", value: projectTasks.length ? `${done}/${projectTasks.length}` : "—" },
+    { label: "Parts cost", value: parts.length ? money(partsCost, currency) : "—" },
   ];
 
   const wrap = document.createElement("div");
@@ -647,6 +655,117 @@ function renderProjectMetrics(project) {
     )
     .join("");
 
+  return wrap;
+}
+
+/* ---------------------------------------------------------------
+   Parts — individual manufacturing items tracked per project,
+   separate from tasks (a part isn't work to do, it's a physical
+   item with a quantity, a cost, and a manufacturing status)
+---------------------------------------------------------------- */
+const PART_STATUSES = ["Pending", "Ordered", "In production", "Received", "Installed"];
+
+function projectParts(project) {
+  return project.parts || [];
+}
+
+function partsTotalCost(project) {
+  return projectParts(project).reduce((sum, p) => sum + num(p.quantity) * num(p.unitCost), 0);
+}
+
+function addPart(projectId, name) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  if (!project.parts) project.parts = [];
+  project.parts.push({ id: uid(), name, quantity: "1", unitCost: "", status: PART_STATUSES[0] });
+  persist();
+  render();
+}
+
+function updatePartField(projectId, partId, field, value) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  const part = projectParts(project).find((p) => p.id === partId);
+  if (!part) return;
+  part[field] = value;
+  persist();
+  render();
+}
+
+function deletePart(projectId, partId) {
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  project.parts = projectParts(project).filter((p) => p.id !== partId);
+  persist();
+  render();
+}
+
+function renderProjectParts(project) {
+  const wrap = document.createElement("div");
+  wrap.className = "partswrap";
+
+  const addForm = document.createElement("form");
+  addForm.className = "inlineadd";
+  addForm.innerHTML = `
+    <input class="inlineadd__input" type="text" placeholder="Add a part…" autocomplete="off" />
+    <button class="inlineadd__btn" type="submit">Add</button>
+  `;
+  addForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = addForm.querySelector(".inlineadd__input");
+    const name = input.value.trim();
+    if (!name) return;
+    addPart(project.id, name);
+  });
+  wrap.appendChild(addForm);
+
+  const parts = projectParts(project);
+  if (parts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tasklist__empty";
+    empty.textContent = "No parts yet. Add one above to start tracking manufacturing items.";
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const currency = project.currency || "GBP";
+
+  const table = document.createElement("div");
+  table.className = "partstable";
+  table.innerHTML = `
+    <div class="partrow partrow--head">
+      <span>Part</span>
+      <span>Qty</span>
+      <span>Unit cost</span>
+      <span>Total</span>
+      <span>Status</span>
+      <span></span>
+    </div>
+  `;
+
+  parts.forEach((part) => {
+    const total = num(part.quantity) * num(part.unitCost);
+    const row = document.createElement("div");
+    row.className = "partrow";
+    row.innerHTML = `
+      <span class="partrow__name"></span>
+      <input type="number" min="0" data-field="quantity" value="${part.quantity || ""}" />
+      <input type="number" min="0" data-field="unitCost" value="${part.unitCost || ""}" />
+      <span class="partrow__total">${money(total, currency)}</span>
+      <select data-field="status">
+        ${PART_STATUSES.map((s) => `<option value="${s}" ${part.status === s ? "selected" : ""}>${s}</option>`).join("")}
+      </select>
+      <button class="listrow__action listrow__action--danger" type="button">Delete</button>
+    `;
+    row.querySelector(".partrow__name").textContent = part.name;
+    row.querySelectorAll("[data-field]").forEach((el) => {
+      el.addEventListener("change", (e) => updatePartField(project.id, part.id, e.target.dataset.field, e.target.value));
+    });
+    row.querySelector(".listrow__action--danger").addEventListener("click", () => deletePart(project.id, part.id));
+    table.appendChild(row);
+  });
+
+  wrap.appendChild(table);
   return wrap;
 }
 
@@ -668,6 +787,11 @@ function renderProjectDetail(project) {
 
   wrap.appendChild(renderProjectFields(project));
   wrap.appendChild(renderProjectMetrics(project));
+
+  const tasksHead = document.createElement("h3");
+  tasksHead.className = "section-title";
+  tasksHead.textContent = "Tasks";
+  wrap.appendChild(tasksHead);
 
   const addForm = document.createElement("form");
   addForm.className = "inlineadd";
@@ -693,6 +817,12 @@ function renderProjectDetail(project) {
   } else {
     projectTasks.forEach((task) => wrap.appendChild(renderProjectTaskRow(task)));
   }
+
+  const partsHead = document.createElement("h3");
+  partsHead.className = "section-title";
+  partsHead.textContent = "Parts";
+  wrap.appendChild(partsHead);
+  wrap.appendChild(renderProjectParts(project));
 
   return wrap;
 }
@@ -758,6 +888,7 @@ function createProject(name) {
     currency: "GBP",
     startDate: "",
     endDate: "",
+    parts: [],
   });
   persist();
   render();
