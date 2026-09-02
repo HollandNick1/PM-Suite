@@ -392,6 +392,10 @@ button, input, select, textarea {
   max-width: 640px;
 }
 
+.board.is-list.is-wide {
+  max-width: none;
+}
+
 .timelinefilter {
   display: flex;
   align-items: center;
@@ -782,7 +786,8 @@ button, input, select, textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .gantt__sidebar {
@@ -799,6 +804,10 @@ button, input, select, textarea {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-soft);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
 }
 
 .gantt__name {
@@ -819,12 +828,16 @@ button, input, select, textarea {
 
 .gantt__scroll {
   overflow-x: auto;
+  overflow-y: hidden;
   flex: 1;
 }
 
 .gantt__header {
-  position: relative;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
+  z-index: 1;
 }
 
 .gantt__tick {

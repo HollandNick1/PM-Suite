@@ -104,8 +104,10 @@ function render() {
   const board = document.getElementById("board");
   const isTimeline = currentView === "board" && boardMode === "timeline";
   const isCalendar = currentView === "board" && boardMode === "calendar";
+  const isProjectGantt = currentView === "projects" && activeProjectId && projectTasksView === "gantt";
   board.classList.toggle("is-list", currentView !== "board" || isTimeline);
   board.classList.toggle("is-calendar", isCalendar);
+  board.classList.toggle("is-wide", isProjectGantt);
 
   if (currentView === "board") {
     if (isTimeline) {
@@ -798,6 +800,7 @@ function renderProjectParts(project) {
 ---------------------------------------------------------------- */
 const GANTT_ROW_H = 40;
 const GANTT_HEAD_H = 28;
+const GANTT_VISIBLE_ROWS = 10;
 
 function renderProjectGantt(project) {
   const wrap = document.createElement("div");
@@ -836,6 +839,7 @@ function renderProjectGantt(project) {
 
   const layout = document.createElement("div");
   layout.className = "gantt__layout";
+  layout.style.maxHeight = GANTT_HEAD_H + GANTT_VISIBLE_ROWS * GANTT_ROW_H + "px";
 
   // Sidebar — task names, fixed width, scrolls vertically with the chart
   const sidebar = document.createElement("div");
