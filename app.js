@@ -64,6 +64,14 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Dates are always stored/compared as ISO ("YYYY-MM-DD" sorts and diffs
+// correctly) but displayed as DD/MM/YYYY — this only ever touches display.
+function formatDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 // New tasks default to a due date a week out, since the Timeline view
 // orders everything by due date and an undated task has nowhere to sit.
 function defaultDueDate() {
@@ -161,7 +169,7 @@ function renderTimelineView(board) {
     const banner = document.createElement("div");
     banner.className = "timelinefilter";
     banner.innerHTML = `
-      <span>Showing tasks due <strong>${timelineFilterDate}</strong></span>
+      <span>Showing tasks due <strong>${formatDate(timelineFilterDate)}</strong></span>
       <button class="timelinefilter__clear" type="button">Show all</button>
     `;
     banner.querySelector(".timelinefilter__clear").addEventListener("click", () => {
@@ -203,7 +211,7 @@ function renderTimelineRow(task) {
     <div class="listrow__main">
       <span class="listrow__title"></span>
       <span class="listrow__meta">
-        <span class="listrow__due ${overdue ? "is-overdue" : ""}">${task.due || "No due date"}</span>
+        <span class="listrow__due ${overdue ? "is-overdue" : ""}">${task.due ? formatDate(task.due) : "No due date"}</span>
         <span class="subtaskrow__status">${STATUS_LABEL[task.status] || task.status}</span>
         ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
         ${project ? `<span class="card__project"></span>` : ""}
@@ -351,7 +359,7 @@ function renderCard(task) {
     <div class="card__title"></div>
     <div class="card__meta">
       ${project ? `<span class="card__project"></span>` : ""}
-      ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${task.due}</span>` : ""}
+      ${task.due ? `<span class="card__due ${overdue ? "is-overdue" : ""}">${formatDate(task.due)}</span>` : ""}
       ${task.priority === "high" ? '<span class="card__priority-high">high</span>' : ""}
     </div>
     <div class="card__footer">
@@ -821,7 +829,7 @@ function renderTrashRow(entry) {
   row.innerHTML = `
     <div class="listrow__main">
       <span class="listrow__title"></span>
-      <span class="listrow__meta">Deleted ${entry.deletedAt}</span>
+      <span class="listrow__meta">Deleted ${formatDate(entry.deletedAt)}</span>
     </div>
     <div class="listrow__actions">
       <button class="listrow__action" data-action="restore">Restore</button>
@@ -957,7 +965,7 @@ function openPanel(id) {
   document.getElementById("panelDue").value = task.due || "";
   document.getElementById("panelPriority").value = task.priority || "normal";
   populateProjectSelect(task.projectId);
-  document.getElementById("panelMeta").textContent = `Created ${task.created} · ${task.id}`;
+  document.getElementById("panelMeta").textContent = `Created ${formatDate(task.created)} · ${task.id}`;
 
   document.getElementById("panelBackdrop").classList.add("is-open");
 }
