@@ -1002,21 +1002,43 @@ function renderProjectGantt(project) {
   svg.setAttribute("width", chartWidth);
   svg.setAttribute("height", sorted.length * GANTT_ROW_H);
 
+  const DEP_STUB = 14;
   sorted.forEach((task) => {
     (task.dependencies || []).forEach((dep) => {
       const from = barRects.get(dep.taskId);
       const to = barRects.get(task.id);
       if (!from || !to) return; // predecessor has no due date, so isn't on this chart
-      const midX = from.x2 + 12;
+
+      let d, labelX, labelY;
+      if (to.x1 - DEP_STUB >= from.x2 + DEP_STUB) {
+        // Enough room: a simple step out of the predecessor and into the
+        // successor's left edge, approaching left-to-right the whole way.
+        const midX = from.x2 + DEP_STUB;
+        d = `M ${from.x2} ${from.y} H ${midX} V ${to.y} H ${to.x1}`;
+        labelX = midX + 3;
+        labelY = (from.y + to.y) / 2 - 3;
+      } else {
+        // Not enough horizontal gap — a direct step would have to run
+        // backwards through the successor bar to reach its left edge.
+        // Loop out and around via the gutter between the two rows instead,
+        // so the final approach is still always left-to-right into the bar.
+        const outX = from.x2 + DEP_STUB;
+        const approachX = to.x1 - DEP_STUB;
+        const gutterY = (from.y + to.y) / 2;
+        d = `M ${from.x2} ${from.y} H ${outX} V ${gutterY} H ${approachX} V ${to.y} H ${to.x1}`;
+        labelX = outX + 3;
+        labelY = (from.y + gutterY) / 2 - 3;
+      }
+
       const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", `M ${from.x2} ${from.y} H ${midX} V ${to.y} H ${to.x1}`);
+      path.setAttribute("d", d);
       path.setAttribute("class", "gantt__deplink");
       svg.appendChild(path);
 
       if (num(dep.lag) !== 0) {
         const label = document.createElementNS(svgNS, "text");
-        label.setAttribute("x", midX + 3);
-        label.setAttribute("y", (from.y + to.y) / 2 - 3);
+        label.setAttribute("x", labelX);
+        label.setAttribute("y", labelY);
         label.setAttribute("class", "gantt__deplabel");
         label.textContent = (num(dep.lag) > 0 ? "+" : "") + num(dep.lag) + "d";
         svg.appendChild(label);
