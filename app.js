@@ -122,11 +122,12 @@ function render() {
   const board = document.getElementById("board");
   const isTimeline = currentView === "board" && boardMode === "timeline";
   const isCalendar = currentView === "board" && boardMode === "calendar";
-  const isProjectsList = currentView === "projects" && !activeProjectId;
-  const isProjectGantt = currentView === "projects" && activeProjectId && projectTasksView === "gantt";
   board.classList.toggle("is-list", currentView !== "board" || isTimeline);
   board.classList.toggle("is-calendar", isCalendar);
-  board.classList.toggle("is-wide", isProjectsList || isProjectGantt);
+  // The whole Projects tab — the project list and every project's detail
+  // page, in either List or Gantt mode — uses the full board width rather
+  // than the narrow single-column layout Archive/Timeline still use.
+  board.classList.toggle("is-wide", currentView === "projects");
 
   if (currentView === "board") {
     if (isTimeline) {
