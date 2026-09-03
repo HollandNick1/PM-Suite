@@ -1112,24 +1112,24 @@ function renderProjectDetail(project) {
   });
   wrap.appendChild(tasksHead);
 
+  const addForm = document.createElement("form");
+  addForm.className = "inlineadd";
+  addForm.innerHTML = `
+    <input class="inlineadd__input" type="text" placeholder="Add a task…" autocomplete="off" />
+    <button class="inlineadd__btn" type="submit">Add</button>
+  `;
+  addForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = addForm.querySelector(".inlineadd__input");
+    const title = input.value.trim();
+    if (!title) return;
+    addProjectTask(project.id, title);
+  });
+  wrap.appendChild(addForm);
+
   if (projectTasksView === "gantt") {
     wrap.appendChild(renderProjectGantt(project));
   } else {
-    const addForm = document.createElement("form");
-    addForm.className = "inlineadd";
-    addForm.innerHTML = `
-      <input class="inlineadd__input" type="text" placeholder="Add a task…" autocomplete="off" />
-      <button class="inlineadd__btn" type="submit">Add</button>
-    `;
-    addForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const input = addForm.querySelector(".inlineadd__input");
-      const title = input.value.trim();
-      if (!title) return;
-      addProjectTask(project.id, title);
-    });
-    wrap.appendChild(addForm);
-
     const projectTasks = tasksForProject(project.id);
     if (projectTasks.length === 0) {
       const empty = document.createElement("p");
