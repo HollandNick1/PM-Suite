@@ -816,6 +816,12 @@ button, input, select, textarea {
   margin: 24px 0 10px 0;
 }
 
+.archive__bulk {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 /* Gantt view (project detail) */
 .ganttwrap {
   margin-bottom: 20px;

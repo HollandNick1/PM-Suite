@@ -1274,6 +1274,19 @@ function renderArchiveView(board) {
     empty.textContent = "Nothing deleted yet — tasks you delete will show up here so you can restore them.";
     wrap.appendChild(empty);
   } else {
+    const bulkHead = document.createElement("div");
+    bulkHead.className = "sectionhead-row";
+    bulkHead.innerHTML = `
+      <span></span>
+      <div class="archive__bulk">
+        <button class="listrow__action" type="button" data-bulk="restore">Restore all</button>
+        <button class="listrow__action listrow__action--danger" type="button" data-bulk="purge">Delete all</button>
+      </div>
+    `;
+    bulkHead.querySelector('[data-bulk="restore"]').addEventListener("click", restoreAllFromTrash);
+    bulkHead.querySelector('[data-bulk="purge"]').addEventListener("click", purgeAllFromTrash);
+    wrap.appendChild(bulkHead);
+
     trash.forEach((entry) => wrap.appendChild(renderTrashRow(entry)));
   }
 
@@ -1315,6 +1328,26 @@ function restoreFromTrash(id) {
 function purgeFromTrash(id) {
   if (!confirm("Permanently delete this task? This can't be undone.")) return;
   trash = trash.filter((t) => t.id !== id);
+  persist();
+  render();
+}
+
+function restoreAllFromTrash() {
+  if (trash.length === 0) return;
+  trash.forEach((entry) => {
+    const { deletedAt, prevStatus, ...task } = entry;
+    task.status = prevStatus || "backlog";
+    tasks.push(task);
+  });
+  trash = [];
+  persist();
+  render();
+}
+
+function purgeAllFromTrash() {
+  if (trash.length === 0) return;
+  if (!confirm(`Permanently delete all ${trash.length} archived task${trash.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+  trash = [];
   persist();
   render();
 }
