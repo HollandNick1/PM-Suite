@@ -40,6 +40,17 @@ const COLUMNS = [
 ];
 const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.id, c.label]));
 
+const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 };
+
+// Shared ordering for Kanban (within a column) and Timeline: soonest due
+// date first (undated tasks last), then high-to-low priority as a tiebreak.
+function byDueThenPriority(a, b) {
+  const dueA = a.due || "9999-99-99";
+  const dueB = b.due || "9999-99-99";
+  if (dueA !== dueB) return dueA.localeCompare(dueB);
+  return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+}
+
 let tasks = [];
 let projects = [];
 let trash = [];
@@ -50,6 +61,7 @@ let projectTasksView = "list"; // "list" | "gantt" — only meaningful within a 
 let currentView = "board"; // "board" | "projects" | "archive"
 let boardMode = "kanban"; // "kanban" | "timeline" | "calendar" — only meaningful on the Board tab
 let timelineFilterDate = null; // set by clicking a Calendar day; narrows Timeline to that date
+let boardProjectFilter = ""; // project id, or "" for all — applies to Kanban and Timeline
 let calendarCursor = monthOf(new Date());
 
 function monthOf(date) {
@@ -130,6 +142,7 @@ function render() {
   board.classList.toggle("is-wide", currentView === "projects");
 
   if (currentView === "board") {
+    populateBoardProjectFilter();
     if (isTimeline) {
       renderTimelineView(board);
     } else if (isCalendar) {
@@ -151,11 +164,28 @@ function render() {
 function updateQuickAddVisibility() {
   const form = document.getElementById("quickAddForm");
   const viewSwitch = document.getElementById("boardViewSwitch");
+  const projectFilter = document.getElementById("boardProjectFilter");
   // The top quick-add always creates a board task in the backlog, which
   // isn't relevant on the Projects tab (sub-tasks are added per-project)
   // or the Archive tab (a fresh task wouldn't show up there anyway).
   form.style.display = currentView === "board" ? "" : "none";
   viewSwitch.style.display = currentView === "board" ? "" : "none";
+  // The project filter only makes sense for Kanban/Timeline's task lists,
+  // not the Calendar (which shows due-date counts across every project).
+  projectFilter.style.display = currentView === "board" && boardMode !== "calendar" ? "" : "none";
+}
+
+function populateBoardProjectFilter() {
+  const select = document.getElementById("boardProjectFilter");
+  const current = select.value;
+  select.innerHTML =
+    '<option value="">All projects</option>' +
+    projects
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => `<option value="${p.id}">${p.name}</option>`)
+      .join("");
+  select.value = current;
 }
 
 /* ---------------------------------------------------------------
@@ -164,8 +194,10 @@ function updateQuickAddVisibility() {
 function renderBoardView(board) {
   board.innerHTML = "";
 
+  const visibleTasks = boardProjectFilter ? tasks.filter((t) => t.projectId === boardProjectFilter) : tasks;
+
   COLUMNS.forEach((col) => {
-    const colTasks = tasks.filter((t) => t.status === col.id);
+    const colTasks = visibleTasks.filter((t) => t.status === col.id);
 
     const colEl = document.createElement("div");
     colEl.className = "column";
@@ -179,7 +211,7 @@ function renderBoardView(board) {
 
     const body = colEl.querySelector(".column__body");
     colTasks
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .sort(byDueThenPriority)
       .forEach((task) => body.appendChild(renderCard(task)));
 
     // Lives inside the body (not after it) so it sits right under the last
@@ -222,7 +254,8 @@ function renderTimelineView(board) {
     wrap.appendChild(banner);
   }
 
-  const visible = timelineFilterDate ? tasks.filter((t) => t.due === timelineFilterDate) : tasks;
+  let visible = boardProjectFilter ? tasks.filter((t) => t.projectId === boardProjectFilter) : tasks;
+  if (timelineFilterDate) visible = visible.filter((t) => t.due === timelineFilterDate);
 
   if (visible.length === 0) {
     const empty = document.createElement("p");
@@ -236,7 +269,7 @@ function renderTimelineView(board) {
     // required) sort to the end rather than the front.
     visible
       .slice()
-      .sort((a, b) => (a.due || "9999-99-99").localeCompare(b.due || "9999-99-99"))
+      .sort(byDueThenPriority)
       .forEach((task) => wrap.appendChild(renderTimelineRow(task)));
   }
 
@@ -1415,6 +1448,11 @@ function wireGlobalEvents() {
   });
 
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
+
+  document.getElementById("boardProjectFilter").addEventListener("change", (e) => {
+    boardProjectFilter = e.target.value;
+    render();
+  });
 
   document.querySelectorAll(".rail__link").forEach((btn) => {
     btn.addEventListener("click", () => {

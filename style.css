@@ -249,6 +249,16 @@ select option {
   white-space: nowrap;
 }
 
+.projectfilter {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-family: var(--font-body);
+  color: var(--ink-soft);
+  background: var(--panel);
+}
+
 .viewswitch {
   display: flex;
   border: 1px solid var(--line);
