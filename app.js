@@ -170,9 +170,7 @@ function updateQuickAddVisibility() {
   // or the Archive tab (a fresh task wouldn't show up there anyway).
   form.style.display = currentView === "board" ? "" : "none";
   viewSwitch.style.display = currentView === "board" ? "" : "none";
-  // The project filter only makes sense for Kanban/Timeline's task lists,
-  // not the Calendar (which shows due-date counts across every project).
-  projectFilter.style.display = currentView === "board" && boardMode !== "calendar" ? "" : "none";
+  projectFilter.style.display = currentView === "board" ? "" : "none";
 }
 
 function populateBoardProjectFilter() {
@@ -323,8 +321,9 @@ function renderCalendarView(board) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const todayStr = todayISO();
 
+  const visibleTasks = boardProjectFilter ? tasks.filter((t) => t.projectId === boardProjectFilter) : tasks;
   const dueCounts = {};
-  tasks.forEach((t) => {
+  visibleTasks.forEach((t) => {
     if (t.due) dueCounts[t.due] = (dueCounts[t.due] || 0) + 1;
   });
 

@@ -493,6 +493,7 @@ select option {
 
 .calendar {
   max-width: 760px;
+  margin: 0 auto;
 }
 
 .calendar__head {
