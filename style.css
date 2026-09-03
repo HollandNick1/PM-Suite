@@ -25,6 +25,28 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+[data-theme="dark"] {
+  --bg: #1c1d19;
+  --panel: #25261f;
+  --ink: #e9e7de;
+  --ink-soft: #a4a195;
+  --line: #3a3b32;
+  --line-strong: #525145;
+
+  --accent: #7db3ae;
+  --accent-soft: #253c3b;
+  --done: #93bb96;
+  --done-soft: #2a3527;
+  --warn: #dd8f66;
+  --warn-soft: #3d2b20;
+  --priority-high: #dd8f66;
+  --priority-normal: #a4a195;
+  --priority-low: #736f61;
+}
+
+:root { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -40,6 +62,7 @@ html, body {
 button, input, select, textarea {
   font-family: inherit;
   color: inherit;
+  background-color: transparent;
 }
 
 :focus-visible {
@@ -116,8 +139,25 @@ button, input, select, textarea {
   font-weight: 500;
 }
 
-.rail__sync {
+.rail__theme {
   margin-top: auto;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.rail__theme:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rail__sync {
+  margin-top: 12px;
   padding: 10px 10px 0;
   border-top: 1px solid var(--line);
   display: flex;

@@ -60,6 +60,7 @@ function monthOf(date) {
    Bootstrapping
 ---------------------------------------------------------------- */
 async function init() {
+  initTheme();
   const state = await store.load();
   tasks = state.tasks;
   projects = state.projects;
@@ -67,6 +68,23 @@ async function init() {
   render();
   wireGlobalEvents();
   updateSyncIndicator();
+}
+
+const THEME_KEY = "workbench_theme";
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.getElementById("themeToggle").textContent = theme === "dark" ? "Light mode" : "Dark mode";
+}
+
+function initTheme() {
+  applyTheme(localStorage.getItem(THEME_KEY) || "light");
+}
+
+function toggleTheme() {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
 }
 
 function uid() {
@@ -1361,6 +1379,8 @@ function wireGlobalEvents() {
       init();
     });
   });
+
+  document.getElementById("themeToggle").addEventListener("click", toggleTheme);
 
   document.querySelectorAll(".rail__link").forEach((btn) => {
     btn.addEventListener("click", () => {
